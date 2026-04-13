@@ -1,0 +1,28 @@
+# Virtual environments
+/venv/
+/.venv/
+/.venv-wsl/
+
+# Python cache/build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Local agent/editor state
+/.codex/
+.idea/
+.vscode/
+.env
+
+# Data and generated artifacts
+/data/
+/outputs/
+/models/
+/mlruns/
+/.dvc/cache/
+/reports/evidently/
+/reports/gradcam/
+/reports/shap/
