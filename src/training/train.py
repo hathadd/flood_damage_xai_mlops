@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from src.data.dataloader import build_dataloaders
 from src.evaluation.metrics import accuracy_score, confusion_matrix, logits_to_predictions, macro_f1_score
 from src.models.siamese_model import SiameseResNet18
-from src.training.losses import build_weighted_cross_entropy_loss
+from src.training.losses import build_loss
 
 
 @dataclass
@@ -50,6 +50,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pin-memory", action="store_true")
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--loss-type", type=str, choices=["ce", "focal"], default="ce")
+    parser.add_argument("--focal-gamma", type=float, default=2.0)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--pretrained", action="store_true")
     parser.add_argument("--num-classes", type=int, default=4)
@@ -313,7 +315,11 @@ def fit(args: argparse.Namespace) -> None:
         pretrained=args.pretrained,
         dropout=args.dropout,
     ).to(device)
-    criterion = build_weighted_cross_entropy_loss(dataloaders.class_weights.to(device))
+    criterion = build_loss(
+        loss_type=args.loss_type,
+        class_weights=dataloaders.class_weights.to(device),
+        gamma=args.focal_gamma,
+    )
     optimizer = Adam(
         model.parameters(),
         lr=args.learning_rate,
