@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import random
 from dataclasses import dataclass
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import nn
@@ -27,8 +32,17 @@ class EpochResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a Siamese ResNet18 flood damage classifier.")
-    parser.add_argument("--split-metadata-path", type=str, default="data/splits/metadata_splits.csv")
+    parser.add_argument(
+        "--split-metadata-path",
+        "--metadata-csv",
+        dest="split_metadata_path",
+        type=str,
+        default="data/splits/metadata_splits.csv",
+        help="Path to metadata_splits.csv. --metadata-csv is kept as a Colab-friendly alias.",
+    )
     parser.add_argument("--output-dir", type=str, default="outputs/checkpoints")
+    parser.add_argument("--history-path", type=str, default="outputs/history/training_history.csv")
+    parser.add_argument("--figures-dir", type=str, default="outputs/figures")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=224)
@@ -155,6 +169,105 @@ def summarize_epoch(
     )
 
 
+def build_history_row(epoch: int, train_result: EpochResult, val_result: EpochResult) -> dict[str, float | int]:
+    return {
+        "epoch": epoch,
+        "train_loss": train_result.loss,
+        "train_accuracy": train_result.accuracy,
+        "train_macro_f1": train_result.macro_f1,
+        "val_loss": val_result.loss,
+        "val_accuracy": val_result.accuracy,
+        "val_macro_f1": val_result.macro_f1,
+    }
+
+
+def save_history_csv(history: list[dict[str, float | int]], history_path: str | Path) -> Path:
+    history_path = Path(history_path)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fieldnames = [
+        "epoch",
+        "train_loss",
+        "train_accuracy",
+        "train_macro_f1",
+        "val_loss",
+        "val_accuracy",
+        "val_macro_f1",
+    ]
+
+    with open(history_path, "w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(history)
+
+    return history_path
+
+
+def plot_metric_curve(
+    history: list[dict[str, float | int]],
+    train_key: str,
+    val_key: str,
+    ylabel: str,
+    title: str,
+    output_path: str | Path,
+) -> Path:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    epochs = [int(row["epoch"]) for row in history]
+    train_values = [float(row[train_key]) for row in history]
+    val_values = [float(row[val_key]) for row in history]
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(epochs, train_values, marker="o", label="train")
+    plt.plot(epochs, val_values, marker="o", label="val")
+    plt.xlabel("Epoch")
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+
+    return output_path
+
+
+def save_training_curves(history: list[dict[str, float | int]], figures_dir: str | Path) -> dict[str, Path]:
+    if not history:
+        raise ValueError("Cannot save training curves from an empty history.")
+
+    figures_dir = Path(figures_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "loss": plot_metric_curve(
+            history=history,
+            train_key="train_loss",
+            val_key="val_loss",
+            ylabel="Loss",
+            title="Training and Validation Loss",
+            output_path=figures_dir / "loss_curve.png",
+        ),
+        "macro_f1": plot_metric_curve(
+            history=history,
+            train_key="train_macro_f1",
+            val_key="val_macro_f1",
+            ylabel="Macro F1-score",
+            title="Training and Validation Macro F1-score",
+            output_path=figures_dir / "f1_curve.png",
+        ),
+        "accuracy": plot_metric_curve(
+            history=history,
+            train_key="train_accuracy",
+            val_key="val_accuracy",
+            ylabel="Accuracy",
+            title="Training and Validation Accuracy",
+            output_path=figures_dir / "accuracy_curve.png",
+        ),
+    }
+
+
 def save_checkpoint(
     output_dir: str | Path,
     epoch: int,
@@ -207,6 +320,7 @@ def fit(args: argparse.Namespace) -> None:
         weight_decay=args.weight_decay,
     )
 
+    history: list[dict[str, float | int]] = []
     best_val_macro_f1 = -1.0
     best_checkpoint_path: Path | None = None
 
@@ -229,11 +343,13 @@ def fit(args: argparse.Namespace) -> None:
             max_batches=args.max_val_batches,
         )
 
+        history.append(build_history_row(epoch, train_result, val_result))
+
         print(
             f"Epoch {epoch:03d}/{args.epochs:03d} | "
-            f"train_loss={train_result.loss:.4f} train_acc={train_result.accuracy:.4f} "
+            f"train_loss={train_result.loss:.4f} train_accuracy={train_result.accuracy:.4f} "
             f"train_macro_f1={train_result.macro_f1:.4f} | "
-            f"val_loss={val_result.loss:.4f} val_acc={val_result.accuracy:.4f} "
+            f"val_loss={val_result.loss:.4f} val_accuracy={val_result.accuracy:.4f} "
             f"val_macro_f1={val_result.macro_f1:.4f}"
         )
 
@@ -249,9 +365,14 @@ def fit(args: argparse.Namespace) -> None:
             )
             print(f"Saved best checkpoint: {best_checkpoint_path}")
 
+    history_path = save_history_csv(history, args.history_path)
+    curve_paths = save_training_curves(history, args.figures_dir)
+
     print(f"Best validation macro F1: {best_val_macro_f1:.4f}")
     if best_checkpoint_path is not None:
         print(f"Best checkpoint path: {best_checkpoint_path}")
+    print(f"Final history CSV: {history_path}")
+    print("Final training curves:", ", ".join(str(path) for path in curve_paths.values()))
 
 
 def main() -> None:
