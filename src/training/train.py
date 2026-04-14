@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
+import mlflow
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -43,6 +44,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="outputs/checkpoints")
     parser.add_argument("--history-path", type=str, default="outputs/history/training_history.csv")
     parser.add_argument("--figures-dir", type=str, default="outputs/figures")
+    parser.add_argument("--mlflow-tracking-uri", type=str, default="mlruns")
+    parser.add_argument("--mlflow-experiment-name", type=str, default="flood_damage_xai_mlops")
+    parser.add_argument("--mlflow-run-name", type=str, default=None)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--image-size", type=int, default=224)
@@ -73,6 +77,45 @@ def resolve_device(device_arg: str) -> torch.device:
     if device_arg == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return torch.device(device_arg)
+
+
+def resolve_mlflow_tracking_uri(tracking_uri: str) -> str:
+    if "://" in tracking_uri or tracking_uri.startswith("databricks"):
+        return tracking_uri
+    return Path(tracking_uri).resolve().as_uri()
+
+
+def build_mlflow_params(args: argparse.Namespace, device: torch.device) -> dict[str, str | int | float | bool]:
+    return {
+        "split_metadata_path": args.split_metadata_path,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "image_size": args.image_size,
+        "num_workers": args.num_workers,
+        "learning_rate": args.learning_rate,
+        "weight_decay": args.weight_decay,
+        "dropout": args.dropout,
+        "pretrained": args.pretrained,
+        "num_classes": args.num_classes,
+        "random_state": args.random_state,
+        "device": str(device),
+        "loss_type": args.loss_type,
+        "focal_gamma": args.focal_gamma,
+    }
+
+
+def log_epoch_metrics_to_mlflow(epoch: int, train_result: EpochResult, val_result: EpochResult) -> None:
+    mlflow.log_metrics(
+        {
+            "train_loss": train_result.loss,
+            "train_accuracy": train_result.accuracy,
+            "train_macro_f1": train_result.macro_f1,
+            "val_loss": val_result.loss,
+            "val_accuracy": val_result.accuracy,
+            "val_macro_f1": val_result.macro_f1,
+        },
+        step=epoch,
+    )
 
 
 def move_batch_to_device(batch: dict[str, torch.Tensor], device: torch.device) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -301,84 +344,110 @@ def fit(args: argparse.Namespace) -> None:
     device = resolve_device(args.device)
     print(f"Using device: {device}")
 
-    dataloaders = build_dataloaders(
-        split_metadata_path=args.split_metadata_path,
-        image_size=args.image_size,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_memory,
-        random_state=args.random_state,
-    )
+    mlflow.set_tracking_uri(resolve_mlflow_tracking_uri(args.mlflow_tracking_uri))
+    mlflow.set_experiment(args.mlflow_experiment_name)
 
-    model = SiameseResNet18(
-        num_classes=args.num_classes,
-        pretrained=args.pretrained,
-        dropout=args.dropout,
-    ).to(device)
-    criterion = build_loss(
-        loss_type=args.loss_type,
-        class_weights=dataloaders.class_weights.to(device),
-        gamma=args.focal_gamma,
-    )
-    optimizer = Adam(
-        model.parameters(),
-        lr=args.learning_rate,
-        weight_decay=args.weight_decay,
-    )
+    with mlflow.start_run(run_name=args.mlflow_run_name):
+        active_run = mlflow.active_run()
+        if active_run is not None:
+            print(f"MLflow run_id: {active_run.info.run_id}")
 
-    history: list[dict[str, float | int]] = []
-    best_val_macro_f1 = -1.0
-    best_checkpoint_path: Path | None = None
+        mlflow.log_params(build_mlflow_params(args, device))
 
-    for epoch in range(1, args.epochs + 1):
-        train_result = train_one_epoch(
-            model=model,
-            dataloader=dataloaders.train_loader,
-            criterion=criterion,
-            optimizer=optimizer,
-            device=device,
+        dataloaders = build_dataloaders(
+            split_metadata_path=args.split_metadata_path,
+            image_size=args.image_size,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            random_state=args.random_state,
+        )
+
+        model = SiameseResNet18(
             num_classes=args.num_classes,
-            max_batches=args.max_train_batches,
+            pretrained=args.pretrained,
+            dropout=args.dropout,
+        ).to(device)
+        criterion = build_loss(
+            loss_type=args.loss_type,
+            class_weights=dataloaders.class_weights.to(device),
+            gamma=args.focal_gamma,
         )
-        val_result = evaluate(
-            model=model,
-            dataloader=dataloaders.val_loader,
-            criterion=criterion,
-            device=device,
-            num_classes=args.num_classes,
-            max_batches=args.max_val_batches,
-        )
-
-        history.append(build_history_row(epoch, train_result, val_result))
-
-        print(
-            f"Epoch {epoch:03d}/{args.epochs:03d} | "
-            f"train_loss={train_result.loss:.4f} train_accuracy={train_result.accuracy:.4f} "
-            f"train_macro_f1={train_result.macro_f1:.4f} | "
-            f"val_loss={val_result.loss:.4f} val_accuracy={val_result.accuracy:.4f} "
-            f"val_macro_f1={val_result.macro_f1:.4f}"
+        optimizer = Adam(
+            model.parameters(),
+            lr=args.learning_rate,
+            weight_decay=args.weight_decay,
         )
 
-        if val_result.macro_f1 > best_val_macro_f1:
-            best_val_macro_f1 = val_result.macro_f1
-            best_checkpoint_path = save_checkpoint(
-                output_dir=args.output_dir,
-                epoch=epoch,
+        history: list[dict[str, float | int]] = []
+        best_val_macro_f1 = -1.0
+        best_val_accuracy = 0.0
+        best_checkpoint_path: Path | None = None
+
+        for epoch in range(1, args.epochs + 1):
+            train_result = train_one_epoch(
                 model=model,
+                dataloader=dataloaders.train_loader,
+                criterion=criterion,
                 optimizer=optimizer,
-                val_result=val_result,
-                args=args,
+                device=device,
+                num_classes=args.num_classes,
+                max_batches=args.max_train_batches,
             )
-            print(f"Saved best checkpoint: {best_checkpoint_path}")
+            val_result = evaluate(
+                model=model,
+                dataloader=dataloaders.val_loader,
+                criterion=criterion,
+                device=device,
+                num_classes=args.num_classes,
+                max_batches=args.max_val_batches,
+            )
 
-    history_path = save_history_csv(history, args.history_path)
-    curve_paths = save_training_curves(history, args.figures_dir)
+            history.append(build_history_row(epoch, train_result, val_result))
+            log_epoch_metrics_to_mlflow(epoch, train_result, val_result)
 
-    print(f"Best validation macro F1: {best_val_macro_f1:.4f}")
-    if best_checkpoint_path is not None:
-        print(f"Best checkpoint path: {best_checkpoint_path}")
-    print(f"Final history CSV: {history_path}")
-    print("Final training curves:", ", ".join(str(path) for path in curve_paths.values()))
+            print(
+                f"Epoch {epoch:03d}/{args.epochs:03d} | "
+                f"train_loss={train_result.loss:.4f} train_accuracy={train_result.accuracy:.4f} "
+                f"train_macro_f1={train_result.macro_f1:.4f} | "
+                f"val_loss={val_result.loss:.4f} val_accuracy={val_result.accuracy:.4f} "
+                f"val_macro_f1={val_result.macro_f1:.4f}"
+            )
+
+            if val_result.macro_f1 > best_val_macro_f1:
+                best_val_macro_f1 = val_result.macro_f1
+                best_val_accuracy = val_result.accuracy
+                best_checkpoint_path = save_checkpoint(
+                    output_dir=args.output_dir,
+                    epoch=epoch,
+                    model=model,
+                    optimizer=optimizer,
+                    val_result=val_result,
+                    args=args,
+                )
+                print(f"Saved best checkpoint: {best_checkpoint_path}")
+
+        history_path = save_history_csv(history, args.history_path)
+        curve_paths = save_training_curves(history, args.figures_dir)
+
+        mlflow.log_metrics(
+            {
+                "best_val_macro_f1": best_val_macro_f1,
+                "best_val_accuracy": best_val_accuracy,
+            }
+        )
+        mlflow.log_artifact(str(history_path), artifact_path="history")
+        for curve_path in curve_paths.values():
+            mlflow.log_artifact(str(curve_path), artifact_path="figures")
+        if best_checkpoint_path is not None:
+            mlflow.log_artifact(str(best_checkpoint_path), artifact_path="checkpoints")
+
+        print(f"Best validation macro F1: {best_val_macro_f1:.4f}")
+        if best_checkpoint_path is not None:
+            print(f"Best checkpoint path: {best_checkpoint_path}")
+        print(f"Final history CSV: {history_path}")
+        print("Final training curves:", ", ".join(str(path) for path in curve_paths.values()))
+        print(f"MLflow artifact URI: {mlflow.get_artifact_uri()}")
 
 
 def main() -> None:
