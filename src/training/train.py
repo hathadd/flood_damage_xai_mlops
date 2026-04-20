@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.optim import AdamW  # IMP-1
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR  # FIX-3 # IMP-2
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, ReduceLROnPlateau, SequentialLR  # FIX-3 # IMP-2
 from torch.utils.data import DataLoader
 
 from src.data.dataloader import build_dataloaders
@@ -81,6 +81,65 @@ class EarlyStopping:  # IMP-3
         self.should_stop = bool(state_dict.get("should_stop", self.should_stop))  # IMP-5
 
 
+class LRSchedulerController:
+    def __init__(
+        self,
+        name: str,
+        optimizer: torch.optim.Optimizer,
+        scheduler: Any = None,
+        warmup_scheduler: LinearLR | None = None,
+        warmup_epochs: int = 0,
+    ) -> None:
+        self.name = name
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.warmup_scheduler = warmup_scheduler
+        self.warmup_epochs = max(0, warmup_epochs)
+        self.step_count = 0
+
+    def step(self, val_loss: float | None = None) -> None:
+        if self.name == "none":
+            return
+
+        if self.name == "plateau":
+            if self.warmup_scheduler is not None and self.step_count < self.warmup_epochs:
+                self.warmup_scheduler.step()
+            elif self.scheduler is not None:
+                if val_loss is None:
+                    raise ValueError("val_loss is required when using ReduceLROnPlateau.")
+                self.scheduler.step(val_loss)
+            self.step_count += 1
+            return
+
+        if self.scheduler is not None:
+            self.scheduler.step()
+        self.step_count += 1
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "step_count": self.step_count,
+            "warmup_epochs": self.warmup_epochs,
+            "scheduler_state_dict": self.scheduler.state_dict() if self.scheduler is not None else None,
+            "warmup_scheduler_state_dict": self.warmup_scheduler.state_dict() if self.warmup_scheduler is not None else None,
+        }
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        if "name" not in state_dict:
+            if self.scheduler is not None:
+                self.scheduler.load_state_dict(state_dict)
+            return
+
+        self.step_count = int(state_dict.get("step_count", 0))
+        self.warmup_epochs = int(state_dict.get("warmup_epochs", self.warmup_epochs))
+        scheduler_state_dict = state_dict.get("scheduler_state_dict")
+        warmup_scheduler_state_dict = state_dict.get("warmup_scheduler_state_dict")
+        if self.scheduler is not None and scheduler_state_dict is not None:
+            self.scheduler.load_state_dict(scheduler_state_dict)
+        if self.warmup_scheduler is not None and warmup_scheduler_state_dict is not None:
+            self.warmup_scheduler.load_state_dict(warmup_scheduler_state_dict)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a Siamese ResNet18 flood damage classifier.")
     parser.add_argument(
@@ -106,6 +165,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--loss-type", type=str, choices=["ce", "focal"], default="ce")
     parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument("--lr-scheduler", type=str, choices=["none", "cosine", "plateau"], default="cosine")
+    parser.add_argument("--min-learning-rate", type=float, default=1e-6)
+    parser.add_argument("--plateau-factor", type=float, default=0.5)
+    parser.add_argument("--plateau-patience", type=int, default=2)
     parser.add_argument("--warmup-epochs", type=int, default=2)  # IMP-2
     parser.add_argument("--early-stopping-patience", type=int, default=5)  # IMP-3
     parser.add_argument("--mixed-precision", action="store_true")  # IMP-4
@@ -155,6 +218,10 @@ def build_mlflow_params(args: argparse.Namespace, device: torch.device) -> dict[
         "device": str(device),
         "loss_type": args.loss_type,
         "focal_gamma": args.focal_gamma,
+        "lr_scheduler": args.lr_scheduler,
+        "min_learning_rate": args.min_learning_rate,
+        "plateau_factor": args.plateau_factor,
+        "plateau_patience": args.plateau_patience,
         "warmup_epochs": args.warmup_epochs,  # IMP-2
         "early_stopping_patience": args.early_stopping_patience,  # IMP-3
         "mixed_precision": args.mixed_precision,  # IMP-4
@@ -171,6 +238,7 @@ def log_epoch_metrics_to_mlflow(epoch: int, train_result: EpochResult, val_resul
             "val_loss": val_result.loss,
             "val_accuracy": val_result.accuracy,
             "val_macro_f1": val_result.macro_f1,
+            "lr": learning_rate,
             "learning_rate": learning_rate,  # FIX-3
         },
         step=epoch,
@@ -291,6 +359,7 @@ def summarize_epoch(
 def build_history_row(epoch: int, train_result: EpochResult, val_result: EpochResult, learning_rate: float) -> dict[str, float | int]:  # FIX-3
     return {
         "epoch": epoch,
+        "lr": learning_rate,
         "learning_rate": learning_rate,  # FIX-3
         "train_loss": train_result.loss,
         "train_accuracy": train_result.accuracy,
@@ -307,6 +376,7 @@ def save_history_csv(history: list[dict[str, float | int]], history_path: str | 
 
     fieldnames = [
         "epoch",
+        "lr",
         "learning_rate",  # FIX-3
         "train_loss",
         "train_accuracy",
@@ -428,15 +498,70 @@ def save_confusion_matrix_figure(  # IMP-6
     return output_path  # IMP-6
 
 
-def build_scheduler(optimizer: torch.optim.Optimizer, epochs: int, warmup_epochs: int) -> Any:  # FIX-3 # IMP-2
-    warmup_epochs = max(0, min(warmup_epochs, epochs))  # IMP-2
-    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)  # FIX-3
-    if warmup_epochs == 0:  # IMP-2
-        return cosine_scheduler  # IMP-2
+def validate_scheduler_args(
+    scheduler_name: str,
+    min_learning_rate: float,
+    plateau_factor: float,
+    plateau_patience: int,
+) -> None:
+    if min_learning_rate < 0.0:
+        raise ValueError("--min-learning-rate must be non-negative.")
+    if scheduler_name == "plateau" and not 0.0 < plateau_factor < 1.0:
+        raise ValueError("--plateau-factor must be in the interval (0, 1).")
+    if plateau_patience < 0:
+        raise ValueError("--plateau-patience must be non-negative.")
 
-    warmup_scheduler = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)  # IMP-2
-    return SequentialLR(optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs])  # IMP-2
 
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    scheduler_name: str,
+    epochs: int,
+    warmup_epochs: int,
+    min_learning_rate: float,
+    plateau_factor: float,
+    plateau_patience: int,
+) -> LRSchedulerController:
+    validate_scheduler_args(
+        scheduler_name=scheduler_name,
+        min_learning_rate=min_learning_rate,
+        plateau_factor=plateau_factor,
+        plateau_patience=plateau_patience,
+    )
+    if scheduler_name == "none":
+        return LRSchedulerController(name="none", optimizer=optimizer)
+
+    warmup_epochs = max(0, min(warmup_epochs, max(0, epochs - 1)))
+    if scheduler_name == "cosine":
+        cosine_epochs = max(1, epochs - warmup_epochs)
+        cosine_scheduler = CosineAnnealingLR(optimizer, T_max=cosine_epochs, eta_min=min_learning_rate)
+        if warmup_epochs == 0:
+            return LRSchedulerController(name="cosine", optimizer=optimizer, scheduler=cosine_scheduler)
+
+        warmup_scheduler = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
+        sequential_scheduler = SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_epochs],
+        )
+        return LRSchedulerController(name="cosine", optimizer=optimizer, scheduler=sequential_scheduler)
+
+    warmup_scheduler = None
+    if warmup_epochs > 0:
+        warmup_scheduler = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
+    plateau_scheduler = ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=plateau_factor,
+        patience=plateau_patience,
+        min_lr=min_learning_rate,
+    )
+    return LRSchedulerController(
+        name="plateau",
+        optimizer=optimizer,
+        scheduler=plateau_scheduler,
+        warmup_scheduler=warmup_scheduler,
+        warmup_epochs=warmup_epochs,
+    )
 
 def get_current_learning_rate(optimizer: torch.optim.Optimizer) -> float:  # FIX-3
     return float(optimizer.param_groups[0]["lr"])  # FIX-3
@@ -548,7 +673,15 @@ def fit(args: argparse.Namespace) -> None:
             lr=args.learning_rate,
             weight_decay=args.weight_decay,
         )
-        scheduler = build_scheduler(optimizer=optimizer, epochs=args.epochs, warmup_epochs=args.warmup_epochs)  # FIX-3 # IMP-2
+        scheduler = build_scheduler(
+            optimizer=optimizer,
+            scheduler_name=args.lr_scheduler,
+            epochs=args.epochs,
+            warmup_epochs=args.warmup_epochs,
+            min_learning_rate=args.min_learning_rate,
+            plateau_factor=args.plateau_factor,
+            plateau_patience=args.plateau_patience,
+        )
         use_mixed_precision = args.mixed_precision and device.type == "cuda"  # IMP-4
         scaler = torch.cuda.amp.GradScaler(enabled=use_mixed_precision)  # IMP-4
         early_stopping = EarlyStopping(patience=args.early_stopping_patience)  # IMP-3
@@ -608,11 +741,11 @@ def fit(args: argparse.Namespace) -> None:
                 output_path=Path(args.figures_dir) / "confusion_matrix" / f"epoch_{epoch:03d}.png",  # IMP-6
             )  # IMP-6
             mlflow.log_artifact(str(confusion_matrix_path), artifact_path="figures/confusion_matrix")  # IMP-6
-            scheduler.step()  # FIX-3
             learning_rate = get_current_learning_rate(optimizer)  # FIX-3
 
             history.append(build_history_row(epoch, train_result, val_result, learning_rate))  # FIX-3
             log_epoch_metrics_to_mlflow(epoch, train_result, val_result, learning_rate)  # FIX-3
+            scheduler.step(val_loss=val_result.loss)  # FIX-3
 
             print(
                 f"Epoch {epoch:03d}/{args.epochs:03d} | "
