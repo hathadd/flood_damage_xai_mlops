@@ -5,6 +5,7 @@ import csv
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any  # IMP-5
 
 import matplotlib
 import mlflow
@@ -14,7 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import nn
-from torch.optim import Adam
+from torch.optim import AdamW  # IMP-1
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR  # FIX-3 # IMP-2
 from torch.utils.data import DataLoader
 
 from src.data.dataloader import build_dataloaders
@@ -29,6 +31,54 @@ class EpochResult:
     accuracy: float
     macro_f1: float
     confusion_matrix: torch.Tensor
+
+
+class EarlyStopping:  # IMP-3
+    def __init__(self, patience: int = 5, min_delta: float = 0.0) -> None:  # IMP-3
+        self.patience = max(0, patience)  # IMP-3
+        self.min_delta = min_delta  # IMP-3
+        self.best_val_macro_f1 = -1.0  # IMP-3
+        self.best_val_loss = float("inf")  # IMP-3
+        self.counter = 0  # IMP-3
+        self.should_stop = False  # IMP-3
+
+    def is_improvement(self, val_macro_f1: float, val_loss: float) -> bool:  # IMP-3
+        if val_macro_f1 > self.best_val_macro_f1 + self.min_delta:  # IMP-3
+            return True  # IMP-3
+        if abs(val_macro_f1 - self.best_val_macro_f1) <= self.min_delta and val_loss < self.best_val_loss:  # IMP-5
+            return True  # IMP-5
+        return False  # IMP-3
+
+    def step(self, val_macro_f1: float, val_loss: float) -> bool:  # IMP-3
+        improved = self.is_improvement(val_macro_f1=val_macro_f1, val_loss=val_loss)  # IMP-3
+        if improved:  # IMP-3
+            self.best_val_macro_f1 = val_macro_f1  # IMP-3
+            self.best_val_loss = val_loss  # IMP-3
+            self.counter = 0  # IMP-3
+            self.should_stop = False  # IMP-3
+            return True  # IMP-3
+
+        self.counter += 1  # IMP-3
+        self.should_stop = self.counter >= self.patience  # IMP-3
+        return False  # IMP-3
+
+    def state_dict(self) -> dict[str, float | int | bool]:  # IMP-5
+        return {  # IMP-5
+            "patience": self.patience,  # IMP-5
+            "min_delta": self.min_delta,  # IMP-5
+            "best_val_macro_f1": self.best_val_macro_f1,  # IMP-5
+            "best_val_loss": self.best_val_loss,  # IMP-5
+            "counter": self.counter,  # IMP-5
+            "should_stop": self.should_stop,  # IMP-5
+        }  # IMP-5
+
+    def load_state_dict(self, state_dict: dict[str, float | int | bool]) -> None:  # IMP-5
+        self.patience = int(state_dict.get("patience", self.patience))  # IMP-5
+        self.min_delta = float(state_dict.get("min_delta", self.min_delta))  # IMP-5
+        self.best_val_macro_f1 = float(state_dict.get("best_val_macro_f1", self.best_val_macro_f1))  # IMP-5
+        self.best_val_loss = float(state_dict.get("best_val_loss", self.best_val_loss))  # IMP-5
+        self.counter = int(state_dict.get("counter", self.counter))  # IMP-5
+        self.should_stop = bool(state_dict.get("should_stop", self.should_stop))  # IMP-5
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +106,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--loss-type", type=str, choices=["ce", "focal"], default="ce")
     parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument("--warmup-epochs", type=int, default=2)  # IMP-2
+    parser.add_argument("--early-stopping-patience", type=int, default=5)  # IMP-3
+    parser.add_argument("--mixed-precision", action="store_true")  # IMP-4
+    parser.add_argument("--resume-from", type=str, default=None)  # IMP-5
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--pretrained", action="store_true")
     parser.add_argument("--num-classes", type=int, default=4)
@@ -101,10 +155,14 @@ def build_mlflow_params(args: argparse.Namespace, device: torch.device) -> dict[
         "device": str(device),
         "loss_type": args.loss_type,
         "focal_gamma": args.focal_gamma,
+        "warmup_epochs": args.warmup_epochs,  # IMP-2
+        "early_stopping_patience": args.early_stopping_patience,  # IMP-3
+        "mixed_precision": args.mixed_precision,  # IMP-4
+        "resume_from": args.resume_from or "",  # IMP-5
     }
 
 
-def log_epoch_metrics_to_mlflow(epoch: int, train_result: EpochResult, val_result: EpochResult) -> None:
+def log_epoch_metrics_to_mlflow(epoch: int, train_result: EpochResult, val_result: EpochResult, learning_rate: float) -> None:  # FIX-3
     mlflow.log_metrics(
         {
             "train_loss": train_result.loss,
@@ -113,6 +171,7 @@ def log_epoch_metrics_to_mlflow(epoch: int, train_result: EpochResult, val_resul
             "val_loss": val_result.loss,
             "val_accuracy": val_result.accuracy,
             "val_macro_f1": val_result.macro_f1,
+            "learning_rate": learning_rate,  # FIX-3
         },
         step=epoch,
     )
@@ -126,12 +185,13 @@ def move_batch_to_device(batch: dict[str, torch.Tensor], device: torch.device) -
 
 
 def train_one_epoch(
-    model: nn.Module,
+    model: nn.Module,  # IMP-5
     dataloader: DataLoader,
     criterion: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
+    optimizer: torch.optim.Optimizer,  # IMP-5
+    device: torch.device,  # IMP-5
     num_classes: int,
+    scaler: torch.cuda.amp.GradScaler | None = None,  # IMP-4
     max_batches: int | None = None,
 ) -> EpochResult:
     model.train()
@@ -139,6 +199,7 @@ def train_one_epoch(
     total_samples = 0
     all_predictions: list[torch.Tensor] = []
     all_targets: list[torch.Tensor] = []
+    use_amp = scaler is not None and scaler.is_enabled()  # IMP-4
 
     for batch_index, batch in enumerate(dataloader):
         if max_batches is not None and batch_index >= max_batches:
@@ -147,10 +208,20 @@ def train_one_epoch(
         pre_image, post_image, labels = move_batch_to_device(batch, device)
 
         optimizer.zero_grad(set_to_none=True)
-        logits = model(pre_image, post_image)
-        loss = criterion(logits, labels)
-        loss.backward()
-        optimizer.step()
+        with torch.cuda.amp.autocast(enabled=use_amp):  # IMP-4
+            logits = model(pre_image, post_image)  # IMP-4
+            loss = criterion(logits, labels)  # IMP-4
+
+        if use_amp:  # IMP-4
+            scaler.scale(loss).backward()  # IMP-4
+            scaler.unscale_(optimizer)  # IMP-4
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # FIX-2
+            scaler.step(optimizer)  # IMP-4
+            scaler.update()  # IMP-4
+        else:  # IMP-4
+            loss.backward()  # FIX-2
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # FIX-2
+            optimizer.step()  # IMP-4
 
         batch_size = labels.size(0)
         total_loss += float(loss.item()) * batch_size
@@ -163,11 +234,12 @@ def train_one_epoch(
 
 @torch.no_grad()
 def evaluate(
-    model: nn.Module,
+    model: nn.Module,  # IMP-5
     dataloader: DataLoader,
     criterion: nn.Module,
-    device: torch.device,
+    device: torch.device,  # IMP-5
     num_classes: int,
+    mixed_precision: bool = False,  # IMP-4
     max_batches: int | None = None,
 ) -> EpochResult:
     model.eval()
@@ -175,14 +247,16 @@ def evaluate(
     total_samples = 0
     all_predictions: list[torch.Tensor] = []
     all_targets: list[torch.Tensor] = []
+    use_amp = mixed_precision and device.type == "cuda"  # IMP-4
 
     for batch_index, batch in enumerate(dataloader):
         if max_batches is not None and batch_index >= max_batches:
             break
 
         pre_image, post_image, labels = move_batch_to_device(batch, device)
-        logits = model(pre_image, post_image)
-        loss = criterion(logits, labels)
+        with torch.cuda.amp.autocast(enabled=use_amp):  # IMP-4
+            logits = model(pre_image, post_image)  # IMP-4
+            loss = criterion(logits, labels)  # IMP-4
 
         batch_size = labels.size(0)
         total_loss += float(loss.item()) * batch_size
@@ -214,9 +288,10 @@ def summarize_epoch(
     )
 
 
-def build_history_row(epoch: int, train_result: EpochResult, val_result: EpochResult) -> dict[str, float | int]:
+def build_history_row(epoch: int, train_result: EpochResult, val_result: EpochResult, learning_rate: float) -> dict[str, float | int]:  # FIX-3
     return {
         "epoch": epoch,
+        "learning_rate": learning_rate,  # FIX-3
         "train_loss": train_result.loss,
         "train_accuracy": train_result.accuracy,
         "train_macro_f1": train_result.macro_f1,
@@ -232,6 +307,7 @@ def save_history_csv(history: list[dict[str, float | int]], history_path: str | 
 
     fieldnames = [
         "epoch",
+        "learning_rate",  # FIX-3
         "train_loss",
         "train_accuracy",
         "train_macro_f1",
@@ -249,12 +325,12 @@ def save_history_csv(history: list[dict[str, float | int]], history_path: str | 
 
 
 def plot_metric_curve(
-    history: list[dict[str, float | int]],
+    history: list[dict[str, float | int]],  # IMP-5
     train_key: str,
     val_key: str,
     ylabel: str,
     title: str,
-    output_path: str | Path,
+    output_path: str | Path,  # IMP-6
 ) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,30 +389,124 @@ def save_training_curves(history: list[dict[str, float | int]], figures_dir: str
     }
 
 
+def build_class_names(num_classes: int) -> list[str]:  # IMP-6
+    default_class_names = ["no-damage", "minor-damage", "major-damage", "destroyed"]  # IMP-6
+    if num_classes == len(default_class_names):  # IMP-6
+        return default_class_names  # IMP-6
+    return [f"class_{class_index}" for class_index in range(num_classes)]  # IMP-6
+
+
+def save_confusion_matrix_figure(  # IMP-6
+    matrix: torch.Tensor,  # IMP-6
+    class_names: list[str],  # IMP-6
+    output_path: str | Path,  # IMP-6
+) -> Path:  # IMP-6
+    output_path = Path(output_path)  # IMP-6
+    output_path.parent.mkdir(parents=True, exist_ok=True)  # IMP-6
+    matrix_np = matrix.cpu().numpy().astype(np.int64)  # IMP-6
+
+    fig, ax = plt.subplots(figsize=(7, 6))  # IMP-6
+    image = ax.imshow(matrix_np, interpolation="nearest", cmap="Blues")  # IMP-6
+    fig.colorbar(image, ax=ax)  # IMP-6
+    ax.set_xticks(np.arange(len(class_names)))  # IMP-6
+    ax.set_yticks(np.arange(len(class_names)))  # IMP-6
+    ax.set_xticklabels(class_names, rotation=45, ha="right")  # IMP-6
+    ax.set_yticklabels(class_names)  # IMP-6
+    ax.set_xlabel("Predicted label")  # IMP-6
+    ax.set_ylabel("True label")  # IMP-6
+    ax.set_title("Validation Confusion Matrix")  # IMP-6
+
+    threshold = matrix_np.max() / 2.0 if matrix_np.size else 0.0  # IMP-6
+    for row_index in range(matrix_np.shape[0]):  # IMP-6
+        for col_index in range(matrix_np.shape[1]):  # IMP-6
+            color = "white" if matrix_np[row_index, col_index] > threshold else "black"  # IMP-6
+            ax.text(col_index, row_index, str(matrix_np[row_index, col_index]), ha="center", va="center", color=color)  # IMP-6
+
+    fig.tight_layout()  # IMP-6
+    fig.savefig(output_path, dpi=150)  # IMP-6
+    plt.close(fig)  # IMP-6
+    return output_path  # IMP-6
+
+
+def build_scheduler(optimizer: torch.optim.Optimizer, epochs: int, warmup_epochs: int) -> Any:  # FIX-3 # IMP-2
+    warmup_epochs = max(0, min(warmup_epochs, epochs))  # IMP-2
+    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)  # FIX-3
+    if warmup_epochs == 0:  # IMP-2
+        return cosine_scheduler  # IMP-2
+
+    warmup_scheduler = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)  # IMP-2
+    return SequentialLR(optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_epochs])  # IMP-2
+
+
+def get_current_learning_rate(optimizer: torch.optim.Optimizer) -> float:  # FIX-3
+    return float(optimizer.param_groups[0]["lr"])  # FIX-3
+
+
 def save_checkpoint(
     output_dir: str | Path,
+    checkpoint_name: str,  # IMP-5
     epoch: int,
-    model: nn.Module,
-    optimizer: torch.optim.Optimizer,
+    model: nn.Module,  # IMP-5
+    optimizer: torch.optim.Optimizer,  # IMP-5
+    scheduler: Any,  # IMP-5
     val_result: EpochResult,
     args: argparse.Namespace,
-) -> Path:
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = output_dir / "best_siamese_resnet18.pt"
+    history: list[dict[str, float | int]],  # IMP-5
+    best_val_macro_f1: float,  # IMP-5
+    best_val_accuracy: float,  # IMP-5
+    best_val_loss: float,  # IMP-5
+    early_stopping: EarlyStopping,  # IMP-5
+) -> Path:  # IMP-5
+    output_dir = Path(output_dir)  # IMP-5
+    output_dir.mkdir(parents=True, exist_ok=True)  # IMP-5
+    checkpoint_path = output_dir / checkpoint_name  # IMP-5
 
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "val_macro_f1": val_result.macro_f1,
-            "val_accuracy": val_result.accuracy,
-            "args": vars(args),
-        },
-        checkpoint_path,
-    )
-    return checkpoint_path
+    torch.save(  # IMP-5
+        {  # IMP-5
+            "epoch": epoch,  # IMP-5
+            "model_state_dict": model.state_dict(),  # IMP-5
+            "optimizer_state_dict": optimizer.state_dict(),  # IMP-5
+            "scheduler_state_dict": scheduler.state_dict(),  # IMP-5
+            "val_macro_f1": val_result.macro_f1,  # IMP-5
+            "val_accuracy": val_result.accuracy,  # IMP-5
+            "val_loss": val_result.loss,  # IMP-5
+            "best_val_macro_f1": best_val_macro_f1,  # IMP-5
+            "best_val_accuracy": best_val_accuracy,  # IMP-5
+            "best_val_loss": best_val_loss,  # IMP-5
+            "history": history,  # IMP-5
+            "early_stopping_state": early_stopping.state_dict(),  # IMP-5
+            "args": vars(args),  # IMP-5
+        },  # IMP-5
+        checkpoint_path,  # IMP-5
+    )  # IMP-5
+    return checkpoint_path  # IMP-5
+
+
+def load_training_checkpoint(  # IMP-5
+    checkpoint_path: str | Path,  # IMP-5
+    model: nn.Module,  # IMP-5
+    optimizer: torch.optim.Optimizer,  # IMP-5
+    scheduler: Any,  # IMP-5
+    early_stopping: EarlyStopping,  # IMP-5
+    device: torch.device,  # IMP-5
+) -> dict[str, object]:  # IMP-5
+    checkpoint_path = Path(checkpoint_path)  # IMP-5
+    if not checkpoint_path.exists():  # IMP-5
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")  # IMP-5
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)  # IMP-5
+    model.load_state_dict(checkpoint["model_state_dict"])  # IMP-5
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])  # IMP-5
+    if "scheduler_state_dict" in checkpoint:  # IMP-5
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])  # IMP-5
+    if "early_stopping_state" in checkpoint:  # IMP-5
+        early_stopping.load_state_dict(checkpoint["early_stopping_state"])  # IMP-5
+    return checkpoint  # IMP-5
+
+
+def restore_model_weights(checkpoint_path: str | Path, model: nn.Module, device: torch.device) -> None:  # IMP-3
+    checkpoint = torch.load(checkpoint_path, map_location=device)  # IMP-3
+    model.load_state_dict(checkpoint["model_state_dict"])  # IMP-3
 
 
 def fit(args: argparse.Namespace) -> None:
@@ -373,18 +543,45 @@ def fit(args: argparse.Namespace) -> None:
             class_weights=dataloaders.class_weights.to(device),
             gamma=args.focal_gamma,
         )
-        optimizer = Adam(
+        optimizer = AdamW(  # IMP-1
             model.parameters(),
             lr=args.learning_rate,
             weight_decay=args.weight_decay,
         )
+        scheduler = build_scheduler(optimizer=optimizer, epochs=args.epochs, warmup_epochs=args.warmup_epochs)  # FIX-3 # IMP-2
+        use_mixed_precision = args.mixed_precision and device.type == "cuda"  # IMP-4
+        scaler = torch.cuda.amp.GradScaler(enabled=use_mixed_precision)  # IMP-4
+        early_stopping = EarlyStopping(patience=args.early_stopping_patience)  # IMP-3
 
         history: list[dict[str, float | int]] = []
+        start_epoch = 1  # IMP-5
         best_val_macro_f1 = -1.0
         best_val_accuracy = 0.0
+        best_val_loss = float("inf")  # IMP-5
         best_checkpoint_path: Path | None = None
+        last_checkpoint_path = Path(args.output_dir) / "last_epoch.pt"  # IMP-5
 
-        for epoch in range(1, args.epochs + 1):
+        if args.resume_from is not None:  # IMP-5
+            checkpoint = load_training_checkpoint(  # IMP-5
+                checkpoint_path=args.resume_from,  # IMP-5
+                model=model,  # IMP-5
+                optimizer=optimizer,  # IMP-5
+                scheduler=scheduler,  # IMP-5
+                early_stopping=early_stopping,  # IMP-5
+                device=device,  # IMP-5
+            )  # IMP-5
+            history = list(checkpoint.get("history", []))  # IMP-5
+            start_epoch = int(checkpoint.get("epoch", 0)) + 1  # IMP-5
+            best_val_macro_f1 = float(checkpoint.get("best_val_macro_f1", checkpoint.get("val_macro_f1", best_val_macro_f1)))  # IMP-5
+            best_val_accuracy = float(checkpoint.get("best_val_accuracy", checkpoint.get("val_accuracy", best_val_accuracy)))  # IMP-5
+            best_val_loss = float(checkpoint.get("best_val_loss", checkpoint.get("val_loss", best_val_loss)))  # IMP-5
+            best_checkpoint_path = Path(args.output_dir) / "best_siamese_resnet18.pt"  # IMP-5
+            print(f"Resumed training from checkpoint: {args.resume_from}")  # IMP-5
+
+        class_names = build_class_names(args.num_classes)  # IMP-6
+        stopped_early = False  # IMP-3
+
+        for epoch in range(start_epoch, args.epochs + 1):  # IMP-5
             train_result = train_one_epoch(
                 model=model,
                 dataloader=dataloaders.train_loader,
@@ -392,6 +589,7 @@ def fit(args: argparse.Namespace) -> None:
                 optimizer=optimizer,
                 device=device,
                 num_classes=args.num_classes,
+                scaler=scaler,  # IMP-4
                 max_batches=args.max_train_batches,
             )
             val_result = evaluate(
@@ -400,32 +598,75 @@ def fit(args: argparse.Namespace) -> None:
                 criterion=criterion,
                 device=device,
                 num_classes=args.num_classes,
+                mixed_precision=use_mixed_precision,  # IMP-4
                 max_batches=args.max_val_batches,
             )
 
-            history.append(build_history_row(epoch, train_result, val_result))
-            log_epoch_metrics_to_mlflow(epoch, train_result, val_result)
+            confusion_matrix_path = save_confusion_matrix_figure(  # IMP-6
+                matrix=val_result.confusion_matrix,  # IMP-6
+                class_names=class_names,  # IMP-6
+                output_path=Path(args.figures_dir) / "confusion_matrix" / f"epoch_{epoch:03d}.png",  # IMP-6
+            )  # IMP-6
+            mlflow.log_artifact(str(confusion_matrix_path), artifact_path="figures/confusion_matrix")  # IMP-6
+            scheduler.step()  # FIX-3
+            learning_rate = get_current_learning_rate(optimizer)  # FIX-3
+
+            history.append(build_history_row(epoch, train_result, val_result, learning_rate))  # FIX-3
+            log_epoch_metrics_to_mlflow(epoch, train_result, val_result, learning_rate)  # FIX-3
 
             print(
                 f"Epoch {epoch:03d}/{args.epochs:03d} | "
+                f"lr={learning_rate:.8f} "  # FIX-3
                 f"train_loss={train_result.loss:.4f} train_accuracy={train_result.accuracy:.4f} "
                 f"train_macro_f1={train_result.macro_f1:.4f} | "
                 f"val_loss={val_result.loss:.4f} val_accuracy={val_result.accuracy:.4f} "
                 f"val_macro_f1={val_result.macro_f1:.4f}"
             )
 
-            if val_result.macro_f1 > best_val_macro_f1:
-                best_val_macro_f1 = val_result.macro_f1
-                best_val_accuracy = val_result.accuracy
-                best_checkpoint_path = save_checkpoint(
-                    output_dir=args.output_dir,
-                    epoch=epoch,
-                    model=model,
-                    optimizer=optimizer,
-                    val_result=val_result,
-                    args=args,
-                )
-                print(f"Saved best checkpoint: {best_checkpoint_path}")
+            improved = early_stopping.step(val_macro_f1=val_result.macro_f1, val_loss=val_result.loss)  # IMP-3
+            if improved:  # IMP-5
+                best_val_macro_f1 = val_result.macro_f1  # IMP-5
+                best_val_accuracy = val_result.accuracy  # IMP-5
+                best_val_loss = val_result.loss  # IMP-5
+                best_checkpoint_path = save_checkpoint(  # IMP-5
+                    output_dir=args.output_dir,  # IMP-5
+                    checkpoint_name="best_siamese_resnet18.pt",  # IMP-5
+                    epoch=epoch,  # IMP-5
+                    model=model,  # IMP-5
+                    optimizer=optimizer,  # IMP-5
+                    scheduler=scheduler,  # IMP-5
+                    val_result=val_result,  # IMP-5
+                    args=args,  # IMP-5
+                    history=history,  # IMP-5
+                    best_val_macro_f1=best_val_macro_f1,  # IMP-5
+                    best_val_accuracy=best_val_accuracy,  # IMP-5
+                    best_val_loss=best_val_loss,  # IMP-5
+                    early_stopping=early_stopping,  # IMP-5
+                )  # IMP-5
+                print(f"Saved best checkpoint: {best_checkpoint_path}")  # IMP-5
+
+            last_checkpoint_path = save_checkpoint(  # IMP-5
+                output_dir=args.output_dir,  # IMP-5
+                checkpoint_name="last_epoch.pt",  # IMP-5
+                epoch=epoch,  # IMP-5
+                model=model,  # IMP-5
+                optimizer=optimizer,  # IMP-5
+                scheduler=scheduler,  # IMP-5
+                val_result=val_result,  # IMP-5
+                args=args,  # IMP-5
+                history=history,  # IMP-5
+                best_val_macro_f1=best_val_macro_f1,  # IMP-5
+                best_val_accuracy=best_val_accuracy,  # IMP-5
+                best_val_loss=best_val_loss,  # IMP-5
+                early_stopping=early_stopping,  # IMP-5
+            )  # IMP-5
+
+            if early_stopping.should_stop:  # IMP-3
+                stopped_early = True  # IMP-3
+                print(f"Early stopping triggered at epoch {epoch:03d}.")  # IMP-3
+                if best_checkpoint_path is not None and best_checkpoint_path.exists():  # IMP-3
+                    restore_model_weights(best_checkpoint_path, model, device)  # IMP-3
+                break  # IMP-3
 
         history_path = save_history_csv(history, args.history_path)
         curve_paths = save_training_curves(history, args.figures_dir)
@@ -434,17 +675,22 @@ def fit(args: argparse.Namespace) -> None:
             {
                 "best_val_macro_f1": best_val_macro_f1,
                 "best_val_accuracy": best_val_accuracy,
+                "best_val_loss": best_val_loss,  # IMP-5
+                "stopped_early": float(stopped_early),  # IMP-3
             }
         )
         mlflow.log_artifact(str(history_path), artifact_path="history")
         for curve_path in curve_paths.values():
             mlflow.log_artifact(str(curve_path), artifact_path="figures")
-        if best_checkpoint_path is not None:
+        if best_checkpoint_path is not None and best_checkpoint_path.exists():  # IMP-5
             mlflow.log_artifact(str(best_checkpoint_path), artifact_path="checkpoints")
+        if last_checkpoint_path.exists():  # IMP-5
+            mlflow.log_artifact(str(last_checkpoint_path), artifact_path="checkpoints")  # IMP-5
 
         print(f"Best validation macro F1: {best_val_macro_f1:.4f}")
         if best_checkpoint_path is not None:
             print(f"Best checkpoint path: {best_checkpoint_path}")
+        print(f"Last checkpoint path: {last_checkpoint_path}")  # IMP-5
         print(f"Final history CSV: {history_path}")
         print("Final training curves:", ", ".join(str(path) for path in curve_paths.values()))
         print(f"MLflow artifact URI: {mlflow.get_artifact_uri()}")

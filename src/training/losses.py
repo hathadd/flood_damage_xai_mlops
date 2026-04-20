@@ -39,12 +39,16 @@ class FocalLoss(nn.Module):
 
         focal_factor = (1.0 - target_probs).pow(self.gamma)
         loss = -focal_factor * target_log_probs
+        alpha_t: torch.Tensor | None = None  # FIX-1
 
         if self.alpha is not None:
             alpha = self.alpha.to(device=logits.device, dtype=logits.dtype)
-            loss = loss * alpha.gather(dim=0, index=targets)
+            alpha_t = alpha.gather(dim=0, index=targets)  # FIX-1
+            loss = loss * alpha_t  # FIX-1
 
         if self.reduction == "mean":
+            if alpha_t is not None:  # FIX-1
+                return loss.sum() / alpha_t.sum().clamp_min(torch.finfo(loss.dtype).eps)  # FIX-1
             return loss.mean()
 
         if self.reduction == "sum":
@@ -107,4 +111,4 @@ def build_loss(
     if loss_type == "focal":
         return FocalLoss(alpha=class_weights, gamma=gamma)
 
-    raise ValueError(f"Unsupported loss_type: {loss_type}. Expected 'ce' or 'focal'.")
+    raise ValueError(f"Unsupported loss_type: {loss_type}. Expected 'ce' or 'focal'.")  # FIX-1
