@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.data.path_utils import (
+    load_data_config,
+    make_relative_to_dataset_root,
+    resolve_configured_data_path,
+    resolve_data_path,
+    resolve_dataset_root,
+)
 
 
 def load_config(config_path: str = "configs/data.yaml") -> dict[str, Any]:
-    with open(config_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return load_data_config(config_path)
 
 
 def derive_pre_image_name(post_image_name: str) -> str:
@@ -27,9 +38,10 @@ def parse_single_label_file(
     images_post_dir: Path,
     keep_classes: set[str],
     ignore_classes: set[str],
+    dataset_root: str | Path,
 ) -> list[dict[str, Any]]:
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(json_path, "r", encoding="utf-8") as file:
+        data = json.load(file)
 
     metadata = data.get("metadata", {})
     features_root = data.get("features", {})
@@ -75,9 +87,9 @@ def parse_single_label_file(
                 "image_height": metadata.get("height"),
                 "pre_image_name": pre_image_name,
                 "post_image_name": post_image_name,
-                "pre_image_path": str(pre_image_path),
-                "post_image_path": str(post_image_path),
-                "label_json_path": str(json_path),
+                "pre_image_path": make_relative_to_dataset_root(pre_image_path, dataset_root=dataset_root),
+                "post_image_path": make_relative_to_dataset_root(post_image_path, dataset_root=dataset_root),
+                "label_json_path": make_relative_to_dataset_root(json_path, dataset_root=dataset_root),
                 "damage_class": damage_class,
                 "wkt": wkt_polygon,
             }
@@ -88,10 +100,13 @@ def parse_single_label_file(
 
 def build_metadata_dataframe(config_path: str = "configs/data.yaml") -> pd.DataFrame:
     config = load_config(config_path)
+    dataset_root = resolve_dataset_root(config=config, config_path=config_path)
+    if dataset_root is None:
+        raise ValueError("dataset.root_dir must be configured to build metadata.")
 
-    images_pre_dir = Path(config["paths"]["images_pre"])
-    images_post_dir = Path(config["paths"]["images_post"])
-    labels_post_dir = Path(config["paths"]["labels_post"])
+    images_pre_dir = resolve_configured_data_path(config, "images_pre", dataset_root=dataset_root, config_path=config_path)
+    images_post_dir = resolve_configured_data_path(config, "images_post", dataset_root=dataset_root, config_path=config_path)
+    labels_post_dir = resolve_configured_data_path(config, "labels_post", dataset_root=dataset_root, config_path=config_path)
 
     keep_classes = set(config["classes"]["keep"])
     ignore_classes = set(config["classes"]["ignore"])
@@ -106,6 +121,7 @@ def build_metadata_dataframe(config_path: str = "configs/data.yaml") -> pd.DataF
             images_post_dir=images_post_dir,
             keep_classes=keep_classes,
             ignore_classes=ignore_classes,
+            dataset_root=dataset_root,
         )
         all_rows.extend(rows)
 
@@ -113,9 +129,9 @@ def build_metadata_dataframe(config_path: str = "configs/data.yaml") -> pd.DataF
 
     if not df.empty:
         df["class_id"] = df["damage_class"].map(config["label_map"])
-        df["pre_exists"] = df["pre_image_path"].apply(lambda p: Path(p).exists())
-        df["post_exists"] = df["post_image_path"].apply(lambda p: Path(p).exists())
-        df["label_exists"] = df["label_json_path"].apply(lambda p: Path(p).exists())
+        df["pre_exists"] = df["pre_image_path"].apply(lambda value: resolve_data_path(value, dataset_root=dataset_root).exists())
+        df["post_exists"] = df["post_image_path"].apply(lambda value: resolve_data_path(value, dataset_root=dataset_root).exists())
+        df["label_exists"] = df["label_json_path"].apply(lambda value: resolve_data_path(value, dataset_root=dataset_root).exists())
 
     return df
 

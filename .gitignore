@@ -17,8 +17,18 @@ __pycache__/
 .vscode/
 .env
 
-# Data and generated artifacts
-/data/
+# Data artifacts managed by DVC
+/data/*
+!/data/interim/
+!/data/splits/
+/data/interim/*
+!/data/interim/.gitignore
+!/data/interim/*.dvc
+/data/splits/*
+!/data/splits/.gitignore
+!/data/splits/*.dvc
+
+# Other generated artifacts
 /outputs/
 /models/
 /mlruns/

@@ -180,6 +180,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
     parser.add_argument("--max-train-batches", type=int, default=None)
     parser.add_argument("--max-val-batches", type=int, default=None)
+    parser.add_argument(
+        "--dataset-root",
+        type=str,
+        default=None,
+        help="Optional dataset root override used to resolve relative paths from metadata CSVs.",
+    )
     return parser.parse_args()
 
 
@@ -226,6 +232,7 @@ def build_mlflow_params(args: argparse.Namespace, device: torch.device) -> dict[
         "early_stopping_patience": args.early_stopping_patience,  # IMP-3
         "mixed_precision": args.mixed_precision,  # IMP-4
         "resume_from": args.resume_from or "",  # IMP-5
+        "dataset_root": args.dataset_root or "",
     }
 
 
@@ -656,6 +663,7 @@ def fit(args: argparse.Namespace) -> None:
             num_workers=args.num_workers,
             pin_memory=args.pin_memory,
             random_state=args.random_state,
+            dataset_root=args.dataset_root,
         )
 
         model = SiameseResNet18(

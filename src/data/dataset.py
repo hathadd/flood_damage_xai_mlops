@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+
+from src.data.path_utils import resolve_data_path, resolve_dataset_root
 
 
 def parse_wkt_polygon(wkt: str) -> list[tuple[float, float]]:
@@ -67,7 +67,6 @@ def expand_bbox(
     x2 = x_max + pad_x
     y2 = y_max + pad_y
 
-    # enforce minimum crop size
     crop_w = x2 - x1
     crop_h = y2 - y1
 
@@ -81,13 +80,11 @@ def expand_bbox(
         y1 -= extra
         y2 += extra
 
-    # clip to image bounds
     x1 = max(0, int(np.floor(x1)))
     y1 = max(0, int(np.floor(y1)))
     x2 = min(image_width, int(np.ceil(x2)))
     y2 = min(image_height, int(np.ceil(y2)))
 
-    # final safeguard
     if x2 <= x1:
         x2 = min(image_width, x1 + min_crop_size)
     if y2 <= y1:
@@ -96,20 +93,9 @@ def expand_bbox(
     return x1, y1, x2, y2
 
 
-def normalize_image_path(image_path: str | Path) -> Path:
-    path_str = str(image_path)
-
-    if len(path_str) >= 3 and path_str[1] == ":" and path_str[2] in {"\\", "/"}:
-        drive = path_str[0].lower()
-        relative_path = path_str[3:].replace("\\", "/")
-        return Path(f"/mnt/{drive}/{relative_path}")
-
-    return Path(image_path)
-
-
-def load_rgb_image(image_path: str | Path) -> np.ndarray:
-    normalized_path = normalize_image_path(image_path)
-    image = Image.open(normalized_path).convert("RGB")
+def load_rgb_image(image_path: str | Path, dataset_root: str | Path | None = None) -> np.ndarray:
+    resolved_path = resolve_data_path(image_path, dataset_root=dataset_root)
+    image = Image.open(resolved_path).convert("RGB")
     return np.array(image)
 
 
@@ -122,6 +108,8 @@ class XBDPairBuildingDataset(Dataset):
         context_ratio: float = 0.25,
         min_crop_size: int = 64,
         return_metadata: bool = True,
+        dataset_root: str | Path | None = None,
+        config_path: str | Path = "configs/data.yaml",
     ) -> None:
         self.metadata_csv = Path(metadata_csv)
         self.split = split
@@ -129,6 +117,8 @@ class XBDPairBuildingDataset(Dataset):
         self.context_ratio = context_ratio
         self.min_crop_size = min_crop_size
         self.return_metadata = return_metadata
+        self.config_path = config_path
+        self.dataset_root = resolve_dataset_root(dataset_root=dataset_root, config_path=config_path)
 
         self.df = pd.read_csv(self.metadata_csv)
 
@@ -165,7 +155,12 @@ class XBDPairBuildingDataset(Dataset):
         )
         return x1, y1, x2, y2
 
-    def _crop_pair(self, pre_image: np.ndarray, post_image: np.ndarray, crop_box: tuple[int, int, int, int]) -> tuple[np.ndarray, np.ndarray]:
+    def _crop_pair(
+        self,
+        pre_image: np.ndarray,
+        post_image: np.ndarray,
+        crop_box: tuple[int, int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
         x1, y1, x2, y2 = crop_box
         pre_crop = pre_image[y1:y2, x1:x2]
         post_crop = post_image[y1:y2, x1:x2]
@@ -177,8 +172,6 @@ class XBDPairBuildingDataset(Dataset):
             post_tensor = torch.from_numpy(post_crop).permute(2, 0, 1).float() / 255.0
             return pre_tensor, post_tensor
 
-        # Train-time bi-temporal augmentation: share geometry across the pair,
-        # then apply appearance perturbations independently to pre and post.
         if isinstance(self.transforms, dict) and {"joint", "pre", "post"} <= set(self.transforms):
             joint_transforms = self.transforms["joint"]
             transformed_pre = joint_transforms(image=pre_crop)
@@ -192,14 +185,12 @@ class XBDPairBuildingDataset(Dataset):
             post_tensor = self.transforms["post"](image=post_geo)["image"]
             return pre_tensor, post_tensor
 
-        # Keep paired augmentations in sync only when using ReplayCompose.
         if self.transforms.__class__.__name__ == "ReplayCompose":
             transformed_pre = self.transforms(image=pre_crop)
             replay = transformed_pre["replay"]
             transformed_post = self.transforms.replay(replay, image=post_crop)
             return transformed_pre["image"], transformed_post["image"]
 
-        # Deterministic Compose fallback used by validation and test pipelines.
         transformed_pre = self.transforms(image=pre_crop)
         transformed_post = self.transforms(image=post_crop)
         return transformed_pre["image"], transformed_post["image"]
@@ -207,8 +198,8 @@ class XBDPairBuildingDataset(Dataset):
     def __getitem__(self, index: int) -> dict[str, Any]:
         row = self.df.iloc[index]
 
-        pre_image = load_rgb_image(row["pre_image_path"])
-        post_image = load_rgb_image(row["post_image_path"])
+        pre_image = load_rgb_image(row["pre_image_path"], dataset_root=self.dataset_root)
+        post_image = load_rgb_image(row["post_image_path"], dataset_root=self.dataset_root)
 
         crop_box = self._get_crop_box(row)
         pre_crop, post_crop = self._crop_pair(pre_image, post_image, crop_box)

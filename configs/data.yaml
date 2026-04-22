@@ -1,11 +1,11 @@
 dataset:
   name: xbd_flood_subset
-  root_dir: "C:/Users/haddi/OneDrive/Desktop/flooding_dataset/flooding_dataset"
+  root_dir: "/mnt/c/Users/haddi/OneDrive/Desktop/flooding_dataset/flooding_dataset"
 
 paths:
-  images_pre: "C:/Users/haddi/OneDrive/Desktop/flooding_dataset/flooding_dataset/images/pre"
-  images_post: "C:/Users/haddi/OneDrive/Desktop/flooding_dataset/flooding_dataset/images/post"
-  labels_post: "C:/Users/haddi/OneDrive/Desktop/flooding_dataset/flooding_dataset/labels/post"
+  images_pre: "images/pre"
+  images_post: "images/post"
+  labels_post: "labels/post"
   metadata_out: "data/interim/metadata.csv"
 
 classes:

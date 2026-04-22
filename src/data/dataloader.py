@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from src.data.dataset import XBDPairBuildingDataset
 from src.data.transforms import build_transforms
 
+DEFAULT_DATA_CONFIG_PATH = "configs/data.yaml"
 DEFAULT_SPLIT_METADATA_PATH = "data/splits/metadata_splits.csv"
 DEFAULT_IMAGE_SIZE = 224
 DEFAULT_BATCH_SIZE = 16
@@ -61,6 +62,8 @@ def build_split_dataset(
     context_ratio: float = 0.25,
     min_crop_size: int = 64,
     return_metadata: bool = True,
+    dataset_root: str | Path | None = None,
+    data_config_path: str | Path = DEFAULT_DATA_CONFIG_PATH,
 ) -> XBDPairBuildingDataset:
     dataset = XBDPairBuildingDataset(
         metadata_csv=metadata_csv,
@@ -69,6 +72,8 @@ def build_split_dataset(
         context_ratio=context_ratio,
         min_crop_size=min_crop_size,
         return_metadata=return_metadata,
+        dataset_root=dataset_root,
+        config_path=data_config_path,
     )
     dataset.df = split_df.reset_index(drop=True)
     return dataset
@@ -128,6 +133,8 @@ def build_datasets(
     context_ratio: float = 0.25,
     min_crop_size: int = 64,
     return_metadata: bool = True,
+    dataset_root: str | Path | None = None,
+    data_config_path: str | Path = DEFAULT_DATA_CONFIG_PATH,
 ) -> dict[str, XBDPairBuildingDataset]:
     split_df = load_split_metadata(split_metadata_path)
     transforms = build_transforms({"image_size": image_size})
@@ -143,6 +150,8 @@ def build_datasets(
             context_ratio=context_ratio,
             min_crop_size=min_crop_size,
             return_metadata=return_metadata,
+            dataset_root=dataset_root,
+            data_config_path=data_config_path,
         )
 
     return datasets
@@ -158,6 +167,8 @@ def build_dataloaders(
     min_crop_size: int = 64,
     return_metadata: bool = True,
     random_state: int = DEFAULT_RANDOM_STATE,
+    dataset_root: str | Path | None = None,
+    data_config_path: str | Path = DEFAULT_DATA_CONFIG_PATH,
 ) -> DataLoadersBundle:
     datasets = build_datasets(
         split_metadata_path=split_metadata_path,
@@ -165,6 +176,8 @@ def build_dataloaders(
         context_ratio=context_ratio,
         min_crop_size=min_crop_size,
         return_metadata=return_metadata,
+        dataset_root=dataset_root,
+        data_config_path=data_config_path,
     )
 
     full_split_df = load_split_metadata(split_metadata_path)
