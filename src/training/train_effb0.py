@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--early-stopping-patience", type=int, default=10)
     parser.add_argument("--mixed-precision", action="store_true")
     parser.add_argument("--resume-from", type=str, default=None)
-    parser.add_argument("--dropout", type=float, default=0.3)
+    parser.add_argument("--dropout", type=float, default=0.4)
     parser.add_argument("--pretrained", dest="pretrained", action="store_true")
     parser.add_argument("--no-pretrained", dest="pretrained", action="store_false")
     parser.set_defaults(pretrained=True)

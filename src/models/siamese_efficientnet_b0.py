@@ -14,7 +14,7 @@ class SiameseEfficientNetB0(nn.Module):
         self,
         num_classes: int = 4,
         pretrained: bool = True,
-        dropout: float = 0.3,
+        dropout: float = 0.4,
     ) -> None:
         super().__init__()
         self.backbone = timm.create_model(
@@ -23,7 +23,6 @@ class SiameseEfficientNetB0(nn.Module):
             num_classes=0,
         )
         self.feature_dim = 1280
-        self._freeze_early_layers()
 
         fused_feature_dim = self.feature_dim * 2
         self.classifier = nn.Sequential(
@@ -35,12 +34,6 @@ class SiameseEfficientNetB0(nn.Module):
             nn.Dropout(p=dropout),
             nn.Linear(512, num_classes),
         )
-
-    def _freeze_early_layers(self) -> None:
-        frozen_prefixes = ("conv_stem", "bn1", "blocks.0", "blocks.1", "blocks.2")
-        for name, parameter in self.backbone.named_parameters():
-            if name.startswith(frozen_prefixes):
-                parameter.requires_grad = False
 
     def extract_features(self, image: torch.Tensor) -> torch.Tensor:
         return self.backbone(image)
