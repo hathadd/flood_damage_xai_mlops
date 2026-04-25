@@ -192,15 +192,10 @@ def main() -> None:
         if test_metrics:
             mlflow.log_metrics(test_metrics)
 
-        input_example = {
-            "pre_image": torch.zeros(1, 3, 224, 224, dtype=torch.float32),
-            "post_image": torch.zeros(1, 3, 224, 224, dtype=torch.float32),
-        }
         model_info = mlflow.pytorch.log_model(
             pytorch_model=model,
             artifact_path=args.artifact_path,
             registered_model_name=args.registered_model_name,
-            input_example=input_example,
         )
 
     model_version = find_latest_model_version(
@@ -232,3 +227,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
