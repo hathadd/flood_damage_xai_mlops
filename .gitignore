@@ -36,3 +36,7 @@ __pycache__/
 /reports/evidently/
 /reports/gradcam/
 /reports/shap/
+
+mlruns_snapshots/
+reports/
+outputs/

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 class ServingConfig:
     checkpoint_path: str = os.getenv(
         "FLOOD_DAMAGE_CHECKPOINT_PATH",
-        "/content/drive/MyDrive/flood_damage_xai_mlops/outputs/focal_run_b_regularized/checkpoints/best_siamese_resnet18.pt",
+        "outputs/focal_run_b_regularized/checkpoints/best_siamese_resnet18.pt",
     )
     model_name: str = os.getenv("FLOOD_DAMAGE_MODEL_NAME", "run_b_siamese_resnet18_regularized")
     model_version: str = os.getenv("FLOOD_DAMAGE_MODEL_VERSION", "production_candidate_v1")
