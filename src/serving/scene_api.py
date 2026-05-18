@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from src.monitoring.collect_inference_logs import log_scene_inference
 from src.scene.polygon_parser import parse_xbd_buildings
 from src.scene.scene_inference import predict_scene
 from src.scene.schemas import ScenePredictionResponse
@@ -67,6 +68,16 @@ async def predict_scene_endpoint(
             context_ratio=context_ratio,
             min_crop_size=min_crop_size,
         )
+        try:
+            log_scene_inference(
+                pre_image=pre_pil,
+                post_image=post_pil,
+                predictions=predictions,
+                pre_image_path=pre_image.filename,
+                post_image_path=post_image.filename,
+            )
+        except Exception:
+            pass
 
         annotated_image_path: str | None = None
         if save_annotated:

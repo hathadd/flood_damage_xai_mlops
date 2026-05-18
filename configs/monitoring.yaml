@@ -1,0 +1,54 @@
+paths:
+  metadata_path: data/splits/metadata_splits.csv
+  reference_data_path: reports/monitoring/reference/reference_data.csv
+  current_data_path: reports/monitoring/inference_logs/current_inference_data.csv
+  reports_output_dir: reports/monitoring
+
+reference:
+  splits:
+    - train
+    - test
+  include_image_statistics: true
+
+reporting:
+  target_column: true_label
+  prediction_column: predicted_label
+  timestamp_column: timestamp
+  ignore_columns:
+    - sample_id
+    - building_uid
+    - pre_image_path
+    - post_image_path
+    - capture_date
+    - source_dataset
+    - request_source
+    - model_name
+    - model_version
+  preferred_feature_columns:
+    - split
+    - disaster_type
+    - sensor
+    - image_width
+    - image_height
+    - bbox_width
+    - bbox_height
+    - bbox_area
+    - crop_width
+    - crop_height
+    - crop_area
+    - pre_rgb_mean_r
+    - pre_rgb_mean_g
+    - pre_rgb_mean_b
+    - pre_rgb_std_r
+    - pre_rgb_std_g
+    - pre_rgb_std_b
+    - post_rgb_mean_r
+    - post_rgb_mean_g
+    - post_rgb_mean_b
+    - post_rgb_std_r
+    - post_rgb_std_g
+    - post_rgb_std_b
+    - pre_luminance_mean
+    - post_luminance_mean
+    - delta_luminance_mean
+    - delta_rgb_mean_abs

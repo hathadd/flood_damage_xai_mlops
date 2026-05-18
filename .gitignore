@@ -40,3 +40,7 @@ __pycache__/
 mlruns_snapshots/
 reports/
 outputs/
+.mlruns/
+mlruns_backup_/
+mlruns_backup_20260511_195812/
+mlruns_registry_artifacts/

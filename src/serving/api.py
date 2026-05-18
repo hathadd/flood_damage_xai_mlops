@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
+from src.monitoring.collect_inference_logs import log_upload_inference
 from src.serving.config import settings
 from src.serving.inference import predict_damage
 from src.serving.model_loader import get_device, load_model
@@ -52,6 +53,16 @@ async def predict(
         post_bytes = await post_image.read()
         pre_tensor, post_tensor = preprocess_pair(pre_bytes, post_bytes)
         prediction = predict_damage(pre_tensor, post_tensor)
+        try:
+            log_upload_inference(
+                pre_image_bytes=pre_bytes,
+                post_image_bytes=post_bytes,
+                prediction=prediction,
+                pre_image_path=pre_image.filename,
+                post_image_path=post_image.filename,
+            )
+        except Exception:
+            pass
         return PredictionResponse(**prediction)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
