@@ -5,7 +5,7 @@ from typing import Any
 import torch
 
 from src.serving.config import settings
-from src.serving.model_loader import get_device, load_model
+from src.serving.model_loader import get_device, get_serving_identity, load_model
 
 
 def predict_damage(pre_tensor: torch.Tensor, post_tensor: torch.Tensor) -> dict[str, Any]:
@@ -30,12 +30,13 @@ def predict_damage(pre_tensor: torch.Tensor, post_tensor: torch.Tensor) -> dict[
         settings.label_mapping[index]: float(probabilities[index].item())
         for index in range(settings.num_classes)
     }
+    model_name, model_version = get_serving_identity()
 
     return {
         "predicted_class_id": predicted_class_id,
         "predicted_label": settings.label_mapping[predicted_class_id],
         "confidence": confidence,
         "probabilities": probabilities_dict,
-        "model_name": settings.model_name,
-        "model_version": settings.model_version,
+        "model_name": model_name,
+        "model_version": model_version,
     }

@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
-from src.serving.config import settings
+from src.serving.model_loader import get_serving_identity
 from src.xai.scene_gradcam import generate_building_gradcam
 
 router = APIRouter()
@@ -60,6 +60,7 @@ async def explain_building(
             min_crop_size=min_crop_size,
             output_dir=OUTPUT_DIR,
         )
+        model_name, model_version = get_serving_identity()
 
         return {
             "building_index": result["building_index"],
@@ -74,8 +75,8 @@ async def explain_building(
             "post_gradcam_path": result["post_gradcam_path"],
             "pre_crop_path": result["pre_crop_path"],
             "post_crop_path": result["post_crop_path"],
-            "model_name": settings.model_name,
-            "model_version": settings.model_version,
+            "model_name": model_name,
+            "model_version": model_version,
         }
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -21,3 +21,21 @@ class HealthResponse(BaseModel):
     checkpoint_path: str
     model_loaded: bool
     checkpoint_exists: bool
+    model_source_used: str | None = None
+    model_uri: str | None = None
+
+
+class ModelInfoResponse(BaseModel):
+    model_source_requested: str
+    model_source_used: str | None = None
+    registered_model_name: str | None = None
+    model_stage: str | None = None
+    model_alias: str | None = None
+    model_uri: str | None = None
+    tracking_uri: str | None = None
+    checkpoint_path: str | None = None
+    checkpoint_path_used: str | None = None
+    device: str | None = None
+    loaded: bool
+    load_error: str | None = None
+    fallback_warning: str | None = None

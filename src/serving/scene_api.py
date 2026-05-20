@@ -12,8 +12,7 @@ from src.scene.polygon_parser import parse_xbd_buildings
 from src.scene.scene_inference import predict_scene
 from src.scene.schemas import ScenePredictionResponse
 from src.scene.visualization import annotate_post_image
-from src.serving.config import settings
-from src.serving.model_loader import get_device, load_model
+from src.serving.model_loader import get_device, get_serving_identity, load_model
 
 router = APIRouter()
 
@@ -88,12 +87,13 @@ async def predict_scene_endpoint(
             if saved_path is not None:
                 annotated_image_path = str(saved_path)
 
+        model_name, model_version = get_serving_identity()
         return ScenePredictionResponse(
             total_buildings=len(predictions),
             predictions=predictions,
             annotated_image_path=annotated_image_path,
-            model_name=settings.model_name,
-            model_version=settings.model_version,
+            model_name=model_name,
+            model_version=model_version,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -101,4 +101,3 @@ async def predict_scene_endpoint(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Scene prediction failed: {exc}") from exc
-

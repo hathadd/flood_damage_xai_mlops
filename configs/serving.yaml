@@ -1,0 +1,14 @@
+model_source: mlflow_registry
+mlflow_tracking_uri: ./mlruns
+registered_model_name: flood_damage_siamese_resnet18
+model_stage: null
+model_alias: champion
+direct_model_uri: null
+fallback_checkpoint_path: outputs/focal_run_b_regularized/checkpoints/best_siamese_resnet18.pt
+model_name: run_b_siamese_resnet18_regularized
+model_version: production_candidate_v1
+image_size: 224
+dropout: 0.4
+num_classes: 4
+device: auto
+startup_preload: true
