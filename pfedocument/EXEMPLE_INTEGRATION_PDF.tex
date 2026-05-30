@@ -1,0 +1,107 @@
+% ============================================================================
+% EXEMPLE - Comment ajouter des PDFs au document LaTeX
+% ============================================================================
+% 
+% Ce fichier montre les différentes façons d'intégrer vos PDFs
+% dans le document main.tex
+%
+% ============================================================================
+
+% --- OPTION 1 : Inclure un PDF complet (toutes les pages) ---
+
+\subsection{Rapport d'évaluation complet}
+\includepdf[pages=-]{pdfs/evaluation_report.pdf}
+
+
+% --- OPTION 2 : Inclure un sous-ensemble de pages ---
+
+\subsection{Architecture du modèle (pages 1-3)}
+\includepdf[pages=1-3]{pdfs/model_architecture.pdf}
+
+
+% --- OPTION 3 : Inclure des pages spécifiques ---
+
+\subsection{Résultats clés}
+\includepdf[pages={1,5,10}]{pdfs/results_summary.pdf}
+
+
+% --- OPTION 4 : Inclure une seule page ---
+
+\subsection{Graphique principal}
+\includepdf[pages=1]{pdfs/main_chart.pdf}
+
+
+% --- OPTION 5 : Avec texte descriptif avant le PDF ---
+
+\subsection{Matrices de confusion}
+
+Les matrices de confusion montrent la performance détaillée du modèle Run B
+sur les données de test. Elles révèlent :
+\begin{itemize}
+    \item La classe \textit{destroyed} est bien identifiée
+    \item La classe \textit{no-damage} atteint 99\% de précision
+    \item La classe \textit{minor-damage} reste le point faible
+\end{itemize}
+
+\includepdf[pages=-]{pdfs/confusion_matrices.pdf}
+
+
+% --- OPTION 6 : Plusieurs PDFs en séquence ---
+
+\subsection{Visualisations Grad-CAM}
+
+\subsubsection{Exemples : bâtiments non-endommagés}
+\includepdf[pages=1-5]{pdfs/grad_cam_part1.pdf}
+
+\subsubsection{Exemples : bâtiments endommagés}
+\includepdf[pages=1-5]{pdfs/grad_cam_part2.pdf}
+
+\subsubsection{Analyse des patterns visuels}
+\includepdf[pages=-]{pdfs/grad_cam_analysis.pdf}
+
+
+% --- OPTION 7 : Avec régulation des espacements ---
+
+\subsection{Données brutes}
+\newpage
+\includepdf[pages=-]{pdfs/raw_data.pdf}
+
+
+% --- OPTION 8 : Avec titre personnalisé ---
+
+\subsection{Validation expérimentale}
+
+Le document ci-dessous valide la reproductibilité de la data foundation :
+
+\includepdf[pages=-]{pdfs/data_validation.pdf}
+
+La validation confirme que :
+\begin{itemize}
+    \item Tous les splits sont sans chevauchement
+    \item Les métadonnées sont complètes
+    \item Les chemins de fichiers sont corrects
+\end{itemize}
+
+
+% ============================================================================
+% COMMENT UTILISER CET EXEMPLE
+% ============================================================================
+%
+% 1. Copiez les sections qui vous conviennent
+% 2. Remplacez les noms de fichiers (eg. "evaluation_report.pdf")
+%    par vos vrais noms de PDFs
+% 3. Collez-les dans le fichier main.tex, dans la section \appendix
+%
+% Exemple complet pour main.tex :
+%
+% \appendix
+% 
+% \section{Annexes - Résultats}
+% 
+% \subsection{Rapport d'évaluation}
+% \includepdf[pages=-]{pdfs/evaluation_report.pdf}
+% 
+% \subsection{Grad-CAM}
+% \includepdf[pages=-]{pdfs/grad_cam_results.pdf}
+%
+% ============================================================================

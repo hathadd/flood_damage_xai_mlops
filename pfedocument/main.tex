@@ -1,0 +1,266 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf-8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{pdfpages}
+\usepackage{tocloft}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+
+% Configuration des couleurs et du style
+\usepackage{xcolor}
+\definecolor{darkblue}{rgb}{0.1,0.2,0.5}
+\definecolor{lightgray}{rgb}{0.95,0.95,0.95}
+
+% En-têtes et pieds de page
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textit{PFE - Flood Damage XAI MLOps}}
+\lfoot{\today}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+
+% Titre principal
+\title{
+    \textbf{\Large Classification spatio-temporelle des dégâts d'inondation} \\
+    \textbf{\Large à partir d'images satellites avec XAI et MLOps}
+    \\[0.5cm]
+    \normalsize Projet de Fin d'Études (PFE)
+}
+\author{}
+\date{\today}
+
+\begin{document}
+
+% Page de titre
+\maketitle
+\thispagestyle{empty}
+
+\vspace{2cm}
+
+\begin{center}
+    \textcolor{darkblue}{\textbf{Sommaire}}
+\end{center}
+
+\vspace{1cm}
+
+\tableofcontents
+
+\newpage
+
+% Section 1 : Introduction
+\section{Introduction}
+
+\subsection{Contexte et motivation}
+Ce projet de fin d'études vise à développer une pipeline MLOps complète pour la classification spatio-temporelle des dégâts d'inondation à partir d'images satellites haute résolution.
+
+\subsection{Architecture générale}
+\begin{itemize}
+    \item Dataset : xBD (subset flooding)
+    \item Architecture deep learning : Siamese ResNet18
+    \item Framework MLOps : MLflow, DVC, FastAPI, Streamlit
+    \item Explicabilité : Grad-CAM
+\end{itemize}
+
+\newpage
+
+% Section 2 : Data Foundation
+\section{Data Foundation}
+
+La data foundation constitue le socle du projet. Elle garantit :
+\begin{itemize}
+    \item \textbf{Reproductibilité} : métadonnées versionnées et splits robustes
+    \item \textbf{Anti-leakage} : séparation scène-level (sample\_id)
+    \item \textbf{Traçabilité} : chemins relatifs et validation exhaustive
+    \item \textbf{Bi-temporalité} : synchronisation pré/post images
+\end{itemize}
+
+\subsection{Structure des métadonnées}
+Les fichiers centraux sont :
+\begin{itemize}
+    \item \texttt{data/interim/metadata.csv} : 8471 bâtiments, 243 scènes
+    \item \texttt{data/splits/metadata\_splits.csv} : train/val/test sans chevauchement
+\end{itemize}
+
+\subsection{Gestion du déséquilibre}
+\begin{center}
+    \begin{tabular}{|c|c|}
+        \hline
+        \textbf{Classe} & \textbf{Nombre d'exemples} \\
+        \hline
+        no-damage & 8128 (96.0\%) \\
+        destroyed & 75 (0.9\%) \\
+        major-damage & 119 (1.4\%) \\
+        minor-damage & 149 (1.8\%) \\
+        \hline
+    \end{tabular}
+\end{center}
+
+Stratégie : \texttt{WeightedRandomSampler} avec calcul de \texttt{class\_weights}.
+
+\newpage
+
+% Section 3 : Pipeline d'apprentissage
+\section{Pipeline d'apprentissage}
+
+\subsection{Architecture Siamese ResNet18}
+\begin{itemize}
+    \item Deux branches pré/post indépendantes
+    \item Poids partagés
+    \item Couche d'fusion pour classification
+\end{itemize}
+
+\subsection{Runs d'expérimentation}
+\begin{enumerate}
+    \item \textbf{Run A} : Baseline ResNet18, régularisation L2
+    \item \textbf{Run B} : RegularizedNet avec dropout et batch norm avancée
+    \item \textbf{Run C} : BitTemporalTransformer (exploratoire)
+\end{enumerate}
+
+\newpage
+
+% Section 4 : Explicabilité (XAI)
+\section{Explicabilité (XAI)}
+
+\subsection{Grad-CAM}
+Grad-CAM génère des heatmaps pour visualiser les régions que le modèle utilise pour sa prédiction.
+
+\subsection{Validation scientifique}
+Les visualisations Grad-CAM permettent de vérifier que :
+\begin{itemize}
+    \item Le modèle regarde effectivement la zone du bâtiment
+    \item Les cues de dégât post-désastre sont détectées
+    \item Aucun artefact spurieux n'influence les prédictions
+\end{itemize}
+
+\newpage
+
+% Section 5 : MLOps et versionnement
+\section{MLOps et versionnement}
+
+\subsection{DVC (Data Version Control)}
+\begin{itemize}
+    \item Métadonnées versionnées : \texttt{metadata.csv.dvc}, \texttt{metadata\_splits.csv.dvc}
+    \item Soutien pour versionnement dataset brut et artefacts
+    \item Remote de stockage configurable
+\end{itemize}
+
+\subsection{MLflow Model Registry}
+\begin{itemize}
+    \item Enregistrement de tous les modèles expérimentaux
+    \item Tagging du modèle final sélectionné
+    \item Traçabilité des métriques et hyperparamètres
+\end{itemize}
+
+\subsection{Intégration FastAPI (futur)}
+Point de départ pour un service de prédiction :
+\begin{itemize}
+    \item Endpoint POST : \texttt{/predict}
+    \item Inputs : pré/post crops
+    \item Outputs : label + confiance + Grad-CAM
+\end{itemize}
+
+\newpage
+
+% Section 6 : Matrices de confusion et interprétation
+\section{Résultats et interprétation}
+
+\subsection{Confusion matrices}
+Les matrices de confusion des run principales montrent :
+\begin{itemize}
+    \item Run B améliore significativement la classe \textit{destroyed}
+    \item La classe \textit{minor-damage} reste difficile
+    \item \textit{no-damage} est bien prédite
+\end{itemize}
+
+\subsection{Leçons d'ingénierie}
+\begin{enumerate}
+    \item Un modèle plus avancé n'est pas toujours meilleur sur les données réelles
+    \item La sélection du modèle doit être basée sur les performances mesurées
+    \item L'imbalance des classes affecte fortement l'optimisation
+\end{enumerate}
+
+\newpage
+
+% Section 7 : Perspectives futures
+\section{Perspectives futures}
+
+\subsection{Court terme}
+\begin{itemize}
+    \item Compléter l'intégration DVC (pipeline déclaratif, remote)
+    \item Déployer l'API FastAPI
+    \item Rédiger la documentation technique détaillée
+\end{itemize}
+
+\subsection{Moyen/long terme}
+\begin{itemize}
+    \item Monitoring des prédictions en production
+    \item Gestion des cas difficiles et feedback loops
+    \item Extensibilité à d'autres types de désastres
+    \item Auto-labeling ou semi-supervised learning
+\end{itemize}
+
+\newpage
+
+% Section 8 : Sources de référence
+\section{Références}
+
+\subsection{Fichiers clés du projet}
+\begin{itemize}
+    \item \texttt{src/data/} : Data Foundation
+    \item \texttt{src/training/} : Pipeline d'apprentissage
+    \item \texttt{src/evaluation/} : Validation et confusion matrices
+    \item \texttt{src/xai/} : Grad-CAM et explainability
+    \item \texttt{src/models/} : Architecture Siamese et variantes
+\end{itemize}
+
+\subsection{Documentation interne}
+\begin{itemize}
+    \item \texttt{docs/training\_pipeline\_explained.md}
+    \item \texttt{docs/mlflow\_registry\_serving.md}
+\end{itemize}
+
+\newpage
+
+% Instructions pour ajouter des annexes PDF
+\newpage
+\appendix
+
+\section{Annexes - PDFs du projet}
+
+\subsection{Instructions pour intégrer les PDFs}
+
+Pour ajouter des PDFs à ce document, procédez comme suit :
+
+\begin{enumerate}
+    \item Placez vos fichiers PDF dans le dossier \texttt{pfedocument/pdfs/}
+    \item Utilisez la syntaxe suivante pour chaque PDF :
+\end{enumerate}
+
+\begin{verbatim}
+\subsection{Nom du PDF}
+\includepdf[pages=-]{pdfs/mon_fichier.pdf}
+\end{verbatim}
+
+\textbf{Exemple :}
+\begin{verbatim}
+\subsection{Rapport d'évaluation}
+\includepdf[pages=-]{pdfs/evaluation_report.pdf}
+
+\subsection{Architecture modèle}
+\includepdf[pages=-]{pdfs/model_architecture.pdf}
+\end{verbatim}
+
+\vspace{1cm}
+
+\textbf{Notes :}
+\begin{itemize}
+    \item \texttt{pages=-} inclut toutes les pages du PDF
+    \item Utilisez \texttt{pages=1-3} pour inclure les pages 1 à 3 seulement
+    \item Les PDFs doivent être en format PDF standard
+\end{itemize}
+
+\end{document}
