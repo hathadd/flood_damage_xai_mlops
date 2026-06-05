@@ -1,0 +1,60 @@
+# Version Control
+.git
+.gitignore
+.github
+.dvcignore
+
+# Environment & Development
+.venv-wsl
+venv/
+.vscode/
+.idea/
+*.code-workspace
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# DVC & Large Assets (not needed in Docker serving)
+.dvc/
+.dvc/cache
+data/
+
+# Training & Development Artifacts
+scripts/
+tests/
+notebooks/
+*.ipynb
+
+# Documentation
+docs/
+README.md
+pyproject.toml
+*.md
+
+# Backup & Snapshot Directories
+mlruns_backup_*/
+mlruns_snapshots/
+.mlruns/
+
+# Large Report Directories (not needed for serving)
+pfedocument/
+reports/
+
+# Training Outputs (kept in outputs/training if exists)
+outputs/focal*
+outputs/focal_run_c_bit_transformer/
+
+# NOTE: The following ARE needed and NOT excluded:
+# - src/          (application code)
+# - configs/      (configuration files)
+# - mlruns/       (MLflow registry - will be mounted)
+# - mlruns_registry_artifacts/  (model artifacts - will be mounted)
+# - outputs/focal_run_b_regularized/checkpoints/  (will be mounted)
+

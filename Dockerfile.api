@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-serving.txt ./requirements-serving.txt
+
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements-serving.txt
+
+COPY src ./src
+COPY configs ./configs
+
+RUN mkdir -p /app/outputs/serving /app/reports/monitoring/inference_logs
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]

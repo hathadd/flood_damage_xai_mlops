@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: flood-damage-api
+    environment:
+      FLOOD_DAMAGE_MODEL_SOURCE: auto
+      MLFLOW_TRACKING_URI: ./mlruns
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./mlruns:/app/mlruns:ro
+      - ./mlruns_registry_artifacts:/app/mlruns_registry_artifacts:ro
+      - ./outputs/focal_run_b_regularized/checkpoints:/app/outputs/focal_run_b_regularized/checkpoints:ro
+      - api-serving-outputs:/app/outputs/serving
+      - monitoring-logs:/app/reports/monitoring/inference_logs
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: flood-damage-streamlit
+    depends_on:
+      - api
+    environment:
+      FLOOD_DAMAGE_API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./configs:/app/configs:ro
+      - api-serving-outputs:/app/outputs/serving:ro
+
+volumes:
+  api-serving-outputs:
+  monitoring-logs:
