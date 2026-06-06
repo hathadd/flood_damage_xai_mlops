@@ -51,19 +51,145 @@
 
 \newpage
 
-% Section 1 : Introduction
-\section{Introduction}
+% Section 1 : Introduction et Contexte
+\section{Introduction et Contexte du Projet}
 
-\subsection{Contexte et motivation}
-Ce projet de fin d'études vise à développer une pipeline MLOps complète pour la classification spatio-temporelle des dégâts d'inondation à partir d'images satellites haute résolution.
+\subsection{Contexte général}
+Les catastrophes naturelles, en particulier les inondations, constituent une menace majeure pour les sociétés modernes. Selon les données du Global Insure Forum, les inondations représentent environ 40\% des pertes économiques liées aux catastrophes naturelles worldwide. L'évaluation rapide et précise des dégâts post-désastre est essentielle pour les opérations de secours, la planification de la reconstruction et l'évaluation des assurances.
+
+Les images satellites haute résolution offrent une couverture géographique complète et sont accessibles peu après un événement. Cependant, l'analyse manuelle de ces images est\:
+\begin{itemize}
+    \item Chronophage et coûteuse
+    \item Sujette à la variabilité humaine
+    \item Difficile à mettre à l'échelle
+\end{itemize}
+
+L'utilisation de modèles de deep learning offre une solution prometteuse pour automatiser et standardiser cette analyse.
+
+\subsection{Motivation scientifique}
+Ce projet s'inscrit dans la convergence de trois domaines clés\:
+
+\subsubsection{1. Computer Vision multi-temporelle}
+La classification des dégâts exige l'analyse de deux images satellites\:
+\begin{itemize}
+    \item \textbf{Images pré-désastre} : état de référence du bâti
+    \item \textbf{Images post-désastre} : identification des modifications
+\end{itemize}
+
+Cette approche bi-temporelle est fundamentale pour distinguer les dégâts des variations naturelles (ombres, saisonnalité, etc.).
+
+\subsubsection{2. Explicabilité et validation scientifique}
+Les modèles black-box ne sont pas acceptés dans un contexte d'aide à la décision pour les catastrophes. La projet intègre Grad-CAM pour visualiser les zones que le modèle utilise pour sa classification. Cela permet de\:
+\begin{itemize}
+    \item Vérifier que le modèle regarde effectivement le bâti
+    \item Identifier les artefacts spurieux
+    \item Renforcer la confiance des stakeholders
+\end{itemize}
+
+\subsubsection{3. Machine Learning Operations (MLOps)}
+Un modèle scientifiquement robuste ne suffisit pas. L'industrialisation require\:
+\begin{itemize}
+    \item Versionnement des données et modèles
+    \item Reproductibilité des expériences
+    \item Traçabilité du pipeline
+    \item Déploiement et monitoring scalables
+\end{itemize}
+
+Ce projet démontre une approche intégrée du ML moderne.
+
+\subsection{Objectifs du projet}
+\subsubsection{Objectif principal}
+Développer et valider une pipeline complète de classification spatio-temporelle des dégâts d'inondation, combinant\:
+\begin{enumerate}
+    \item Une architecture de deep learning robuste (Siamese Network)
+    \item Une fondation data solide et anti-leakage
+    \item L'explicabilité scientifique (XAI)
+    \item L'infrastructure MLOps (versionning, reproductibilité)
+\end{enumerate}
+
+\subsubsection{Objectifs secondaires}
+\begin{itemize}
+    \item Démontrer l'efficacité de l'apprentissage de représentations bi-temporelles
+    \item Évaluer la performance sur des classes fortement déséquilibrées
+    \item Comparer différentes architectures (ResNet vs Transformer)
+    \item Produire un cadre reproductible pour futurs travaux
+\end{itemize}
 
 \subsection{Architecture générale}
+Le projet s'appuie sur les composants suivants\:
+
+\subsubsection{Data Foundation}
 \begin{itemize}
-    \item Dataset : xBD (subset flooding)
-    \item Architecture deep learning : Siamese ResNet18
-    \item Framework MLOps : MLflow, DVC, FastAPI, Streamlit
-    \item Explicabilité : Grad-CAM
+    \item Dataset source\: xBD (subset flooding)
+    \item Métadonnées\: 8471 exemples bâtiments, 243 scènes
+    \item Anti-leakage\: split au niveau scène
+    \item Bi-temporalité\: synchronisation pré/post
 \end{itemize}
+
+\subsubsection{Modèles}
+\begin{itemize}
+    \item Architecture primaire\: Siamese ResNet18
+    \item Variantes expérimentées\: ResNet18 avec régularisation, BitTemporalTransformer
+    \item Gestion du déséquilibre\: WeightedRandomSampler + class weights
+\end{itemize}
+
+\subsubsection{Infrastructure MLOps}
+\begin{itemize}
+    \item Versionnement données\: DVC (Data Version Control)
+    \item Versionnement modèles\: MLflow Model Registry
+    \item Tracking d'expériences\: MLflow
+    \item Validation data\: scripts d'audit complets
+\end{itemize}
+
+\subsubsection{Explicabilité}
+\begin{itemize}
+    \item Méthode\: Grad-CAM (Gradient-weighted Class Activation Maps)
+    \item Validation qualitative\: visualisation de zones d'intérêt
+    \item Audit du modèle\: détection d'artefacts spurieux
+\end{itemize}
+
+\subsubsection{Déploiement (futur)}
+\begin{itemize}
+    \item API\: FastAPI avec endpoints REST
+    \item Interface utilisateur\: Streamlit
+    \item Monitoring\: Evidently AI
+\end{itemize}
+
+\subsection{Contribution attendue}
+Ce projet contribue à trois niveaux\:
+
+\subsubsection{Au niveau scientifique}
+\begin{itemize}
+    \item Démonstration de l'efficacité de la synchronisation bi-temporelle
+    \item Analyse de l'impact de l'architectures sur des données hautement déséquilibrées
+    \item Validation de Grad-CAM comme outil de confiance scientifique
+\end{itemize}
+
+\subsubsection{Au niveau méthodologique}
+\begin{itemize}
+    \item Pattern de Data Foundation reproductible
+    \item Bonnes pratiques d'anti-leakage pour des données temporelles
+    \item Intégration MLOps pour l'analyse d'imagerie satellite
+\end{itemize}
+
+\subsubsection{Au niveau pratique}
+\begin{itemize}
+    \item Codebase production-ready
+    \item Documentation technique complète
+    \item Pipeline pré-déploiement
+\end{itemize}
+
+\subsection{Structure du mémoire}
+Ce document est organisé comme suit\:
+
+\begin{description}
+    \item[Section 2] \textit{Data Foundation} : construction des métadonnées, gestion de l'anti-leakage, structure bi-temporelle
+    \item[Section 3] \textit{Pipeline d'apprentissage} : architecture Siamese, stratégies de régularisation, résultats expérimentaux
+    \item[Section 4] \textit{Explicabilité (XAI)} : Grad-CAM, validation qualitative, audit du modèle
+    \item[Section 5] \textit{MLOps et versionnement} : DVC, MLflow, infrastructure de reproductibilité
+    \item[Section 6] \textit{Résultats et interprétation} : matrices de confusion, leçons d'ingénierie
+    \item[Section 7] \textit{Perspectives futures} : déploiement, monitoring, extensibilité
+\end{description}
 
 \newpage
 
@@ -142,10 +268,32 @@ Les visualisations Grad-CAM permettent de vérifier que :
 \section{MLOps et versionnement}
 
 \subsection{DVC (Data Version Control)}
+Le projet utilise DVC pour versionner explicitement les artefacts produits par la data foundation, en complément de Git qui versionne le code et les configurations. À ce stade, la mise en œuvre DVC couvre les deux tables centrales suivantes :
 \begin{itemize}
-    \item Métadonnées versionnées : \texttt{metadata.csv.dvc}, \texttt{metadata\_splits.csv.dvc}
-    \item Soutien pour versionnement dataset brut et artefacts
-    \item Remote de stockage configurable
+    \item \texttt{data/interim/metadata.csv} : table principale des bâtiments et des trajectoires pré/post
+    \item \texttt{data/splits/metadata\_splits.csv} : table des partitions \textit{train}, \textit{val}, \textit{test}
+\end{itemize}
+Ces fichiers sont suivis via des fichiers DVC dédiés : \texttt{data/interim/metadata.csv.dvc} et \texttt{data/splits/metadata\_splits.csv.dvc}.
+
+Actuellement, l’implémentation reste partielle :
+\begin{itemize}
+    \item DVC est initialisé et les artefacts métadonnées sont tracés
+    \item La configuration de remote n’est pas encore définie dans ".dvc/config"
+    \item Aucun pipeline déclaratif n’est présent sous forme de \texttt{dvc.yaml} / \texttt{dvc.lock}
+\end{itemize}
+
+Cette configuration permet déjà de garantir une traçabilité des artefacts de la fondation data, mais elle gagnerait à être complétée par une chaîne déclarative de stages. Idéalement, le pipeline DVC serait articulé en trois étapes :
+\begin{enumerate}
+    \item \textbf{build\_metadata} : dépendances = annotations JSON + images pré/post, sortie = \texttt{data/interim/metadata.csv}
+    \item \textbf{split\_metadata} : dépendance = \texttt{data/interim/metadata.csv}, sortie = \texttt{data/splits/metadata\_splits.csv}
+    \item \textbf{check\_foundation} : dépendance = tables de métadonnées, sortie = validation de cohérence structurelle
+\end{enumerate}
+
+Une telle déclaration permettrait à \texttt{dvc repro} de rejouer uniquement les stages modifiés et d'enregistrer automatiquement les empreintes des entrées et sorties dans le fichier de verrouillage. Cela renforcerait les trois propriétés clés suivantes :
+\begin{itemize}
+    \item reproductibilité : reconstruction à l'identique à partir d'un commit Git et d'un checkout DVC
+    \item auditabilité : traçabilité univoque de chaque exemple vers une version de code et de données brutes
+    \item extensibilité : ajout ultérieur d'une source de données peut s'exprimer par un stage supplémentaire sans casser les stages existants
 \end{itemize}
 
 \subsection{MLflow Model Registry}

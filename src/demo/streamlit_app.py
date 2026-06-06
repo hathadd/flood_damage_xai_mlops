@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ import requests
 import streamlit as st
 from PIL import Image, UnidentifiedImageError
 
-DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_API_BASE_URL = os.getenv("FLOOD_DAMAGE_API_BASE_URL", "http://127.0.0.1:8000")
 PROJECT_TITLE = "Flood Damage Classification System"
 PROJECT_SUBTITLE = "Bi-temporal satellite damage classification using Siamese Deep Learning + XAI + MLOps"
 FOOTER_NOTE = "Final selected model: Run B - Siamese ResNet18 Regularized"

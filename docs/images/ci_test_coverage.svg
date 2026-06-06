@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420">
+  <style>text{font-family:Arial, sans-serif; font-size:14px;} .title{font-size:18px;font-weight:bold;} .box{fill:#fff4e5;stroke:#d06922;stroke-width:2;} .small{font-size:12px;} .line{stroke:#d06922;stroke-width:2;} </style>
+  <text x="30" y="30" class="title">Figure 3 : Couverture des tests CI</text>
+  <rect class="box" x="40" y="60" width="240" height="140" rx="10"/> <text x="60" y="90">Import tests</text> <text x="60" y="115" class="small">src.data.dataset</text> <text x="60" y="135" class="small">src.serving.app</text> <text x="60" y="155" class="small">src.monitoring.*</text>
+  <rect class="box" x="320" y="60" width="240" height="140" rx="10"/> <text x="340" y="90">FastAPI readiness</text> <text x="340" y="115" class="small">routes /, /health, /predict</text> <text x="340" y="135" class="small">/model-info, /predict-scene</text> <text x="340" y="155" class="small">/explain-building</text>
+  <rect class="box" x="600" y="60" width="240" height="140" rx="10"/> <text x="620" y="90">Docker/Docs</text> <text x="620" y="115" class="small">Dockerfile.api</text> <text x="620" y="135" class="small">Dockerfile.streamlit</text> <text x="620" y="155" class="small">docker-compose.yml</text>
+  <line class="line" x1="160" y1="220" x2="160" y2="260"/>
+  <line class="line" x1="400" y1="220" x2="400" y2="260"/>
+  <line class="line" x1="680" y1="220" x2="680" y2="260"/>
+  <rect class="box" x="260" y="260" width="380" height="100" rx="10"/> <text x="310" y="295">Synthèse</text> <text x="310" y="320" class="small">Validation structurelle du projet</text>
+</svg>

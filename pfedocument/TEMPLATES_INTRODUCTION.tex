@@ -1,0 +1,227 @@
+% ============================================================================
+% TEMPLATES ALTERNATIFS - Introduction et Contexte
+% ============================================================================
+% 
+% Ce fichier propose plusieurs variantes de structure pour la section
+% Introduction et Contexte, selon le niveau de détail et l'approche.
+%
+% ============================================================================
+
+% ============================================================================
+% TEMPLATE 1 : Structure concise (pour articles courts)
+% ============================================================================
+
+\section{Introduction et Contexte}
+
+Les inondations constituent une menace majeure pour les populations et l'économie mondiale. 
+L'évaluation rapide des dégâts post-désastre à partir d'images satellites est un défi critique 
+pour les opérations de secours et la planification de la reconstruction.
+
+Ce projet développe un modèle de deep learning pour classifier automatiquement les dégâts 
+d'inondation au niveau bâtiment, à partir d'images satellites bi-temporelles (pré et post-désastre). 
+Les contributions principales sont\: une architecture Siamese ResNet18 synchronisée, 
+une data foundation anti-leakage, et l'intégration de Grad-CAM pour l'explicabilité scientifique.
+
+
+% ============================================================================
+% TEMPLATE 2 : Structure standard (approche équilibrée)
+% ============================================================================
+
+\section{Introduction et Contexte du Projet}
+
+\subsection{Motivation et enjeux}
+\subsubsection{Problématique des catastrophes naturelles}
+Les inondations figurent parmi les catastrophes naturelles les plus coûteuses et meurtrières. 
+L'accès rapide à des évaluations précises des dégâts est crucial pour\:
+\begin{itemize}
+    \item Les opérations de secours et l'aide humanitaire
+    \item La planification de la reconstruction
+    \item L'évaluation des sinistres assurés
+    \item La compréhension des impacts climatiques
+\end{itemize}
+
+\subsubsection{Limitations des approches actuelles}
+\begin{itemize}
+    \item Analyse manuelle\: coûteuse, lente, non scalable
+    \item Méthodologies empiriques\: manque de standardisation
+    \item Données incomplètes\: couverture géographique limitée
+\end{itemize}
+
+\subsection{Approche proposée}
+Ce projet innove en combinant\:
+
+\textbf{1. Computer Vision bi-temporelle}\: synchronisation d'images pré/post-désastre pour détecter 
+les changements réels, pas les variations naturelles.
+
+\textbf{2. Architecture Siamese}\: apprentissage de représentations contrastives pour comparer 
+les états du bâti.
+
+\textbf{3. Explicabilité (XAI)}\: Grad-CAM pour valider scientifiquement que le modèle 
+regarde les zones pertinentes.
+
+\textbf{4. MLOps complète}\: versionning données (DVC), traçabilité modèles (MLflow), 
+reproductibilité garantie.
+
+\subsection{Objectifs}
+\begin{enumerate}
+    \item Développer une pipeline de classification performante et robuste
+    \item Assurer la reproductibilité et la traçabilité complètes
+    \item Valider l'explicabilité scientifique du modèle
+    \item Préparer le déploiement industriel
+\end{enumerate}
+
+
+% ============================================================================
+% TEMPLATE 3 : Structure détaillée universitaire (approche ambitieuse)
+% ============================================================================
+
+\section{Introduction et Contexte du Projet}
+
+\subsection{Contexte global}
+\subsubsection{Enjeux climatiques et sanitaires}
+Les catastrophes naturelles liées aux changements climatiques augmentent en fréquence et intensité. 
+Les inondations représentent environ 40\% des pertes économiques annuelles liées aux catastrophes 
+naturelles (Ministère de la Transition Écologique, 2024). Au-delà des impacts économiques, 
+les inondations menacent directement les vies humaines et les infrastructures critiques.
+
+\subsubsection{Évaluation post-désastre}
+L'évaluation rapide et précise des dégâts est fondamentale pour\:
+
+\begin{description}
+    \item[Réponse humanitaire] : identifier les zones nécessitant d'urgence
+    \item[Reconstruction] : quantifier les besoins en ressources
+    \item[Assurance] : valider les réclamations sinistres
+    \item[Science climatique] : analyser les patterns d'intensité et de géographie
+\end{description}
+
+Cependant, les approches actuelles souffrent de graves limitations\:
+
+\begin{itemize}
+    \item \textbf{Coût} : équipes d'experts coûteux déployées sur site
+    \item \textbf{Délai} : plusieurs jours/semaines pour une couverture complète
+    \item \textbf{Variabilité} : évaluations subjectives et inconsistantes
+    \item \textbf{Scalabilité} : impossible de couvrir les grandes géographies
+\end{itemize}
+
+\subsubsection{Imagerie satellite comme source de données}
+Les images satellites haute résolution offrent\:
+
+\begin{itemize}
+    \item \textbf{Couverture} : ensemble géographique complet en quelques heures
+    \item \textbf{Disponibilité} : archives historiques et données en temps réel
+    \item \textbf{Objectivité} : données brutes, interprétation reproductible
+    \item \textbf{Coût-efficacité} : infrastructure existante, pas de déploiement terrain
+\end{itemize}
+
+Le défi : automatiser et standardiser l'analyse de ces images.
+
+\subsection{État de l'art}
+
+\subsubsection{Deep Learning pour l'imagerie satellite}
+Depuis AlexNet (2012) et le succès du deep learning en vision par ordinateur, plusieurs approches 
+ont été adaptées à l'imagerie satellite\:
+
+\begin{itemize}
+    \item \textbf{CNNs standards} (VGG, ResNet, DenseNet) : transfert learning efficace
+    \item \textbf{UNets et segmentation} : utiles pour cartographier les dégâts spatialement
+    \item \textbf{Vision Transformers} : prometteurs mais exigeants en données
+\end{itemize}
+
+\subsubsection{Apprentissage bi-temporel}
+Les approches multi-temporelles se classent en\:
+
+\begin{enumerate}
+    \item \textbf{Concatenation} : fusionner les images pré/post de manière brute
+    \item \textbf{Siamese Networks} : extraire des features indépendantes, puis comparer
+    \item \textbf{RNNs temporelles} : modéliser l'évolution temporelle
+\end{enumerate}
+
+L'approche Siamese est choisie car elle\: (a) force l'apprentissage de représentations significatives, 
+(b) gère les variations non-relatifs (illumination, saisonnalité), (c) est interprétable.
+
+\subsubsection{Explicabilité en vision}
+Grad-CAM \cite{selvaraju2016grad} et Class Activation Maps (CAM) permettent de visualiser 
+les zones que le réseau utilise pour sa décision. C'est crucial pour valider que le modèle 
+ne repose pas sur des artefacts spurieux (nuages, ombres, route).
+
+\subsubsection{MLOps et reproductibilité}
+Les outils modernes (DVC, MLflow, Weights\&Biases) adressent le gap entre recherche et production. 
+Ce projet intègre ces outils dès le départ, pas en post-hoc.
+
+\subsection{Motivation du projet}
+
+\subsubsection{Scientifique}
+\begin{itemize}
+    \item Valider l'efficacité de la synchronisation bi-temporelle pour la détection de changements
+    \item Analyser la robustesse face aux données hautement déséquilibrées
+    \item Démontrer le rôle de Grad-CAM dans la validation scientifique
+\end{itemize}
+
+\subsubsection{Méthodologique}
+\begin{itemize}
+    \item Établir un pattern reproductible de Data Foundation
+    \item Proposer des bonnes pratiques d'anti-leakage pour données temporelles
+    \item Intégrer MLOps dans un projet de vision par ordinateur
+\end{itemize}
+
+\subsubsection{Pratique}
+\begin{itemize}
+    \item Fournir un codebase production-ready
+    \item Démontrer le déploiement pré-production (FastAPI, Streamlit)
+    \item Préparer des bases pour la généralisation à d'autres catastrophes
+\end{itemize}
+
+\subsection{Contributions principales}
+
+\textbf{1. Data Foundation robuste et anti-leakage}\: 
+Pipeline complète pour construire des métadonnées, valider l'absence de data leakage au niveau scène, 
+et générer des splits train/val/test stratifiés.
+
+\textbf{2. Architecture Siamese ResNet18 optimisée}\: 
+Modèle synchronisé pré/post avec régularisation appropriée aux données déséquilibrées.
+
+\textbf{3. Validation scientifique par XAI}\: 
+Grad-CAM appliqué systématiquement pour auditer le modèle et garantir la confiance.
+
+\textbf{4. Pipeline MLOps end-to-end}\: 
+Versioning données (DVC), tracking d'expériences (MLflow), validation automatique, prêt pour déploiement.
+
+\subsection{Plan du mémoire}
+
+Le document se structure en\:
+
+\begin{description}
+    \item[Section 2 : Data Foundation] Construction et validation des métadonnées, 
+        gestion de l'anti-leakage, synchronisation bi-temporelle
+    \item[Section 3 : Pipeline d'apprentissage] Architecture Siamese, 
+        stratégies de régularisation, résultats expérimentaux
+    \item[Section 4 : Explicabilité (XAI)] Grad-CAM, validation qualitative, audit du modèle
+    \item[Section 5 : MLOps et versioning] DVC, MLflow, infrastructure de reproductibilité
+    \item[Section 6 : Résultats et interprétation] Matrices de confusion, leçons d'ingénierie
+    \item[Section 7 : Perspectives] Déploiement, monitoring, extensibilité à autres catastrophes
+\end{description}
+
+
+% ============================================================================
+% TEMPLATE 4 : Avec équation mathématique (pour formels)
+% ============================================================================
+
+\section{Introduction et Contexte}
+
+\subsection{Formulation du problème}
+
+Soit $I_{pre}^{(s)}$ et $I_{post}^{(s)}$ les images satellite pré et post-désastre d'une scène $s$, 
+et soit $b \in \mathbb{B}_s$ un bâtiment dans la scène. On cherche à prédire le label de dégât $y_b \in \{0,1,2,3\}$ 
+(no-damage, minor, major, destroyed) à partir du couple $(I_{pre}^{(s)}[C_b], I_{post}^{(s)}[C_b])$, 
+où $C_b$ est le crop défini par le bbox du bâtiment.
+
+Notre approche maximise la probabilité a posteriori\:
+
+$$\hat{y}_b = \arg\max_y P(y \mid I_{pre}^{(s)}[C_b], I_{post}^{(s)}[C_b], \theta)$$
+
+où $\theta$ représentent les poids du modèle, optimisés via une fonction de perte pondérée 
+pour compenser le déséquilibre des classes.
+
+% ============================================================================
+% FIN TEMPLATES
+% ============================================================================

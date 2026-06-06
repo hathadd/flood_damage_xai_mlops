@@ -31,13 +31,20 @@ jobs:
       - name: Verify essential project files
         run: |
           test -f configs/data.yaml
+          test -f configs/serving.yaml
           test -f configs/monitoring.yaml
           test -f requirements.txt
+          test -f requirements-ci.txt
           test -f src/serving/api.py
+          test -f src/serving/app.py
           test -f src/demo/streamlit_app.py
+          test -f Dockerfile.api
+          test -f Dockerfile.streamlit
+          test -f docker-compose.yml
+          test -f docs/ci_docker.md
 
       - name: Compile Python sources
-        run: python -m compileall src tests
+        run: python -m compileall src tests scripts
 
-      - name: Run lightweight import tests
-        run: pytest -q tests/test_imports.py
+      - name: Run lightweight CI tests
+        run: pytest -q tests/test_imports.py tests/test_ci_readiness.py
